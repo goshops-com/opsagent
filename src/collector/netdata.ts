@@ -63,14 +63,18 @@ export class NetDataAlertCollector extends EventEmitter {
       const alerts: NetDataAlert[] = [];
 
       for (const [key, alert] of Object.entries(data.alarms)) {
+        // NetData returns status as uppercase (WARNING, CRITICAL, CLEAR)
+        // Normalize to lowercase for our internal use
+        const normalizedSeverity = (alert.status || alert.severity || "unknown").toLowerCase();
+
         // Filter by severity
         if (this.config.monitorSeverity !== "all") {
-          if (this.config.monitorSeverity === "critical" && alert.severity !== "critical") {
+          if (this.config.monitorSeverity === "critical" && normalizedSeverity !== "critical") {
             continue;
           }
-          if (this.config.monitorSeverity === "warning" && 
-              alert.severity !== "warning" && 
-              alert.severity !== "critical") {
+          if (this.config.monitorSeverity === "warning" &&
+              normalizedSeverity !== "warning" &&
+              normalizedSeverity !== "critical") {
             continue;
           }
         }
@@ -83,6 +87,7 @@ export class NetDataAlertCollector extends EventEmitter {
         alerts.push({
           ...alert,
           id: key,
+          severity: normalizedSeverity as NetDataAlert["severity"],
         });
       }
 
