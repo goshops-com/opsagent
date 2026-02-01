@@ -21,7 +21,7 @@ An intelligent system monitoring agent that uses [NetData](https://netdata.cloud
 
 ## Demo
 
-[![Watch the demo](docs/demo-thumbnail.png)](https://github.com/goshops-com/opsagent/raw/main/docs/demo.mp4)
+[![Watch the demo](docs/demo-thumbnail.png)](https://customer-nxvytupwl4yw15gx.cloudflarestream.com/5d12ccc6746b9ba2840bb3cde5aa4ca6/watch)
 
 *Click to watch: architecture overview, dashboard, issue tracking, AI analysis, and human-in-the-loop feedback.*
 
