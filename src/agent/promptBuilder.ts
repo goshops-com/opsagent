@@ -19,6 +19,12 @@ export function buildAlertPrompt(
 
   const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 
+  const formatTimestamp = (ts: number): string => {
+    if (!ts || isNaN(ts)) return new Date().toISOString();
+    const date = new Date(ts);
+    return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  };
+
   let metricsSection = "";
   if (metrics) {
     metricsSection = `## Current System Metrics
@@ -70,7 +76,7 @@ ${metrics.processes.topMemory.map((p) => `- ${p.name} (PID ${p.pid}): ${formatPe
 - **Metric**: ${alert.metric}
 - **Current Value**: ${alert.currentValue}
 - **Threshold**: ${alert.threshold}
-- **Time**: ${new Date(alert.timestamp).toISOString()}
+- **Time**: ${formatTimestamp(alert.timestamp)}
 ${alert.source ? `- **Source**: ${alert.source}` : ""}
 
 ${metricsSection}
@@ -82,7 +88,7 @@ ${
         .slice(-5)
         .map(
           (a) =>
-            `- [${a.severity}] ${a.message} at ${new Date(a.timestamp).toISOString()}`
+            `- [${a.severity}] ${a.message} at ${formatTimestamp(a.timestamp)}`
         )
         .join("\n")
     : "No recent alerts"
