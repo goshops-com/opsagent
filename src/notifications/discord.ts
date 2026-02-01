@@ -20,11 +20,19 @@ export class DiscordNotifier {
   private enabled: boolean;
 
   constructor(webhookUrl?: string, enabled: boolean = true) {
-    this.webhookUrl = webhookUrl || process.env.DISCORD_WEBHOOK_URL || "";
-    this.enabled = enabled && !!this.webhookUrl;
+    const url = webhookUrl || process.env.DISCORD_WEBHOOK_URL || "";
+    // Validate that URL is a proper Discord webhook URL
+    const isValidWebhook = url.startsWith("https://discord.com/api/webhooks/") ||
+                           url.startsWith("https://discordapp.com/api/webhooks/");
+    this.webhookUrl = isValidWebhook ? url : "";
+    this.enabled = enabled && isValidWebhook;
 
-    if (enabled && !this.webhookUrl) {
-      console.warn("[Discord] Webhook URL not configured, notifications disabled");
+    if (enabled && !isValidWebhook) {
+      if (url && !url.includes("${")) {
+        console.warn("[Discord] Invalid webhook URL, notifications disabled");
+      } else {
+        console.log("[Discord] Webhook URL not configured, notifications disabled");
+      }
     }
   }
 
