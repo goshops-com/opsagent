@@ -13,11 +13,62 @@ An intelligent system monitoring daemon that detects problems using deterministi
 
 **No Node.js required** - Powered by [Bun](https://bun.sh)
 
-[Getting Started](#quick-start) | [Documentation](#configuration-file) | [Contributing](CONTRIBUTING.md)
+[Installation](#installation) | [Quick Start](#quick-start) | [Documentation](#configuration-file) | [Contributing](CONTRIBUTING.md)
 
 </div>
 
 ---
+
+## Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+```
+
+That's it! The installer will:
+
+- Install [Bun](https://bun.sh) runtime (if not present)
+- Install PM2 process manager
+- Clone OpsAgent to `~/.opsagent`
+- Install all dependencies
+- Guide you through API key configuration
+- Add `opsagent` command to your PATH
+
+### Requirements
+
+| Requirement | Notes |
+|------------|-------|
+| **OS** | macOS or Linux |
+| **curl** | Pre-installed on most systems |
+| **git** | Pre-installed on most systems |
+
+Everything else (Bun, PM2) is installed automatically.
+
+### What Gets Installed
+
+```
+~/.opsagent/          # Main installation directory
+~/.bun/               # Bun runtime (if not already installed)
+~/.bashrc or ~/.zshrc # PATH updated to include opsagent command
+```
+
+## Quick Start
+
+After installation, start monitoring:
+
+```bash
+# Start the daemon
+opsagent start
+
+# Check status
+opsagent status
+
+# View logs
+opsagent logs
+
+# Open dashboard
+open http://localhost:3001
+```
 
 ## Features
 
@@ -59,59 +110,9 @@ An intelligent system monitoring daemon that detects problems using deterministi
      └──────────────┘  └──────────────┘  └──────────────┘
 ```
 
-## Quick Start
+## Configuration
 
-### One-Line Installation
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
-```
-
-This will:
-- Install [Bun](https://bun.sh) runtime (if not present)
-- Install PM2 process manager
-- Clone OpsAgent to `~/.opsagent`
-- Install all dependencies
-- Guide you through configuration
-
-### Manual Installation
-
-<details>
-<summary>Click to expand manual installation steps</summary>
-
-#### Prerequisites
-
-- [Bun](https://bun.sh) runtime (no Node.js required!)
-- PM2 (for daemon mode): `bun install -g pm2`
-- OpenCode API key (for AI agent)
-- Turso database (for multi-server storage)
-
-#### Install Bun
-
-```bash
-curl -fsSL https://bun.sh/install | bash
-```
-
-#### Clone and Install
-
-```bash
-# Clone the repository
-git clone https://github.com/sjcotto/opsagent.git
-cd opsagent
-
-# Install dependencies
-./bin/opsagent.sh install
-
-# Configure credentials
-cp .env.example .env
-nano .env  # Add your API keys
-```
-
-</details>
-
-### Configuration
-
-Edit `.env` with your credentials:
+Edit `~/.opsagent/.env` with your credentials:
 
 ```env
 # Required: OpenCode API key for AI agent
@@ -128,59 +129,36 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 SERVER_NAME=web-server-1
 ```
 
-## Running as a Daemon
-
-### Option 1: PM2 (Recommended)
+## CLI Commands
 
 ```bash
-# Install PM2 globally
-bun install -g pm2
-
-# Start the daemon
-./bin/opsagent.sh start
-
-# Other commands
-./bin/opsagent.sh stop       # Stop the daemon
-./bin/opsagent.sh restart    # Restart
-./bin/opsagent.sh status     # Show status
-./bin/opsagent.sh logs       # Show logs
-./bin/opsagent.sh logs-live  # Follow logs in real-time
-
-# Enable auto-start on system boot
-./bin/opsagent.sh startup
+opsagent start        # Start the daemon
+opsagent stop         # Stop the daemon
+opsagent restart      # Restart the daemon
+opsagent status       # Show status
+opsagent logs         # Show recent logs
+opsagent logs-live    # Follow logs in real-time
+opsagent run          # Run in foreground (development)
+opsagent startup      # Enable auto-start on boot
+opsagent help         # Show all commands
 ```
 
-Or using bun scripts:
+## Alternative Deployment Methods
+
+### Systemd (Linux)
 
 ```bash
-bun run daemon:start    # Start
-bun run daemon:stop     # Stop
-bun run daemon:restart  # Restart
-bun run daemon:status   # Status
-bun run daemon:logs     # Logs
-```
-
-### Option 2: Systemd (Linux)
-
-```bash
-# Install as systemd service (run as root)
-# This will auto-install Bun if not present
-sudo ./systemd/install.sh
+# Install as systemd service
+sudo ~/.opsagent/systemd/install.sh
 
 # Manage with systemctl
 sudo systemctl start opsagent
 sudo systemctl stop opsagent
-sudo systemctl restart opsagent
 sudo systemctl status opsagent
-
-# View logs
 sudo journalctl -u opsagent -f
-
-# Enable on boot
-sudo systemctl enable opsagent
 ```
 
-### Option 3: Docker
+### Docker
 
 ```bash
 # Build and run
@@ -285,13 +263,13 @@ Deploy OpsAgent on multiple servers, all pointing to the same Turso database:
 
 ```bash
 # Server 1: web-server
-SERVER_NAME=web-server-1 ./bin/opsagent.sh start
+SERVER_NAME=web-server-1 opsagent start
 
 # Server 2: api-server
-SERVER_NAME=api-server-1 ./bin/opsagent.sh start
+SERVER_NAME=api-server-1 opsagent start
 
 # Server 3: db-server
-SERVER_NAME=db-server-1 ./bin/opsagent.sh start
+SERVER_NAME=db-server-1 opsagent start
 ```
 
 Query all servers from Turso:
@@ -326,13 +304,11 @@ metrics_snapshots → Historical metrics for dashboards
 ## Development
 
 ```bash
-# Run in development mode
-bun run dev
-# Or use the CLI
-./bin/opsagent.sh run
+# Run in foreground (development mode)
+opsagent run
 
-# Run directly with Bun
-bun run src/index.ts
+# Or with bun directly
+bun run dev
 ```
 
 ## Testing
@@ -354,8 +330,11 @@ Use the included stress testing tools:
 
 ```
 opsagent/
+├── install.sh            # One-liner installer
+├── uninstall.sh          # Uninstaller
 ├── bin/
-│   └── opsagent.sh       # CLI daemon management
+│   ├── opsagent          # CLI command wrapper
+│   └── opsagent.sh       # CLI implementation
 ├── src/
 │   ├── index.ts          # Entry point
 │   ├── config/           # Configuration loading
@@ -369,8 +348,7 @@ opsagent/
 ├── packages/
 │   └── control-panel/    # Next.js centralized dashboard
 ├── config/
-│   ├── default.yaml      # Default configuration
-│   └── test.yaml         # Test configuration
+│   └── default.yaml      # Default configuration
 ├── systemd/
 │   ├── opsagent.service  # Systemd unit file
 │   └── install.sh        # Systemd installer
@@ -384,34 +362,63 @@ opsagent/
 
 ## Logs
 
-Logs are stored in the `logs/` directory when running as a daemon:
-- `logs/out.log` - Standard output
-- `logs/error.log` - Error output
+Logs are stored in `~/.opsagent/logs/` when running as a daemon:
+- `out.log` - Standard output
+- `error.log` - Error output
 
 View logs:
 ```bash
-# With PM2
-./bin/opsagent.sh logs
-./bin/opsagent.sh logs-live
+opsagent logs          # Recent logs
+opsagent logs-live     # Follow logs
 
-# With systemd
+# Or with systemd
 sudo journalctl -u opsagent -f
 ```
 
-## Installation Options
+## Advanced Installation Options
 
 The installer supports environment variables for customization:
 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPSAGENT_DIR` | `~/.opsagent` | Installation directory |
+| `OPSAGENT_NO_START` | (unset) | Set to `1` to skip starting daemon |
+| `OPSAGENT_BRANCH` | `main` | Git branch to install |
+
 ```bash
-# Install to custom directory
-OPSAGENT_DIR=/opt/opsagent curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
-
-# Install without starting the daemon
-OPSAGENT_NO_START=1 curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
-
-# Install from a specific branch
-OPSAGENT_BRANCH=dev curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+# Example: Install to custom directory without starting
+OPSAGENT_DIR=/opt/opsagent OPSAGENT_NO_START=1 \
+  curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
 ```
+
+### Manual Installation
+
+<details>
+<summary>Click to expand</summary>
+
+```bash
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+
+# Clone repository
+git clone https://github.com/sjcotto/opsagent.git ~/.opsagent
+cd ~/.opsagent
+
+# Install dependencies
+bun install
+
+# Install PM2
+bun install -g pm2
+
+# Configure
+cp .env.example .env
+nano .env  # Add your API keys
+
+# Start
+./bin/opsagent start
+```
+
+</details>
 
 ## Uninstall
 
@@ -421,14 +428,9 @@ curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/uninstall.sh 
 
 Or manually:
 ```bash
-# Stop the daemon
 opsagent stop
-
-# Remove installation
 rm -rf ~/.opsagent
-
-# Remove from shell config (optional)
-# Edit ~/.bashrc or ~/.zshrc and remove the OpsAgent lines
+# Edit ~/.bashrc or ~/.zshrc to remove OpsAgent PATH entries
 ```
 
 ## License
