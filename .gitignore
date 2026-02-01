@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Logs directory
+logs/
+
 # Environment files (contain secrets)
 .env
 .env.local

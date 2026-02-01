@@ -1,8 +1,23 @@
-# OpsAgent - AI-Powered System Monitor
+<div align="center">
 
-An intelligent system monitoring daemon that detects problems using deterministic rules and invokes an AI agent to analyze issues and recommend remediation actions. Designed for multi-server deployments with centralized data storage.
+# OpsAgent
 
-**Powered by [Bun](https://bun.sh)** - no Node.js installation required!
+### AI-Powered System Monitoring with Automated Remediation
+
+[![GitHub release](https://img.shields.io/github/v/release/sjcotto/opsagent?style=flat-square)](https://github.com/sjcotto/opsagent/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Bun](https://img.shields.io/badge/Bun-%23000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh)
+[![CI](https://img.shields.io/github/actions/workflow/status/sjcotto/opsagent/ci.yml?branch=main&style=flat-square)](https://github.com/sjcotto/opsagent/actions)
+
+An intelligent system monitoring daemon that detects problems using deterministic rules and invokes an AI agent to analyze issues and recommend remediation actions.
+
+**No Node.js required** - Powered by [Bun](https://bun.sh)
+
+[Getting Started](#quick-start) | [Documentation](#configuration-file) | [Contributing](CONTRIBUTING.md)
+
+</div>
+
+---
 
 ## Features
 
