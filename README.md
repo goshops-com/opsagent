@@ -4,16 +4,16 @@
 
 ### AI-Powered System Monitoring with Automated Remediation
 
-[![GitHub release](https://img.shields.io/github/v/release/sjcotto/opsagent?style=flat-square)](https://github.com/sjcotto/opsagent/releases)
+[![GitHub release](https://img.shields.io/github/v/release/goshops-com/opsagent?style=flat-square)](https://github.com/goshops-com/opsagent/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-%23000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh)
-[![CI](https://img.shields.io/github/actions/workflow/status/sjcotto/opsagent/ci.yml?branch=main&style=flat-square)](https://github.com/sjcotto/opsagent/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/goshops-com/opsagent/ci.yml?branch=main&style=flat-square)](https://github.com/goshops-com/opsagent/actions)
 
-An intelligent system monitoring daemon that detects problems using deterministic rules and invokes an AI agent to analyze issues and recommend remediation actions.
+An intelligent system monitoring agent that uses [NetData](https://netdata.cloud) for metrics collection and AI to analyze alerts and recommend remediation actions.
 
 **No Node.js required** - Powered by [Bun](https://bun.sh)
 
-[Installation](#installation) | [Quick Start](#quick-start) | [Documentation](#configuration-file) | [Contributing](CONTRIBUTING.md)
+[Installation](#installation) | [Quick Start](#quick-start) | [Architecture](#architecture) | [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -22,15 +22,15 @@ An intelligent system monitoring daemon that detects problems using deterministi
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
 ```
 
-That's it! The installer will:
+The installer will:
 
 - Install [Bun](https://bun.sh) runtime (if not present)
 - Install PM2 process manager
+- Install [NetData](https://netdata.cloud) for system metrics
 - Clone OpsAgent to `~/.opsagent`
-- Install all dependencies
 - Guide you through API key configuration
 - Add `opsagent` command to your PATH
 
@@ -42,22 +42,14 @@ That's it! The installer will:
 | **curl** | Pre-installed on most systems |
 | **git** | Pre-installed on most systems |
 
-Everything else (Bun, PM2) is installed automatically.
-
-### What Gets Installed
-
-```
-~/.opsagent/          # Main installation directory
-~/.bun/               # Bun runtime (if not already installed)
-~/.bashrc or ~/.zshrc # PATH updated to include opsagent command
-```
+Everything else (Bun, PM2, NetData) is installed automatically.
 
 ## Quick Start
 
 After installation, start monitoring:
 
 ```bash
-# Start the daemon
+# Start the agent (NetData + AI analysis)
 opsagent start
 
 # Check status
@@ -66,48 +58,73 @@ opsagent status
 # View logs
 opsagent logs
 
-# Open dashboard
-open http://localhost:3001
+# Open dashboards
+open http://localhost:19999  # NetData metrics
+open http://localhost:3001   # OpsAgent AI analysis
 ```
 
 ## Features
 
-- **Deterministic Problem Detection** - Uses `systeminformation` to collect metrics and evaluate against configurable thresholds
-- **AI-Powered Remediation** - Leverages LLMs (via OpenCode Zen) to analyze alerts and recommend actions
-- **Daemon Mode** - Runs as a background service with PM2 or systemd
-- **Multi-Server Support** - All instances report to a centralized Turso database
+- **NetData Integration** - Real-time system metrics with 1-second granularity
+- **AI-Powered Remediation** - Uses LLMs (via OpenCode Zen) to analyze alerts and recommend actions
+- **Issue Tracking** - Groups related alerts into issues, prevents notification spam
+- **Permission Levels** - Control what the agent can do automatically
 - **Discord Notifications** - Alerts humans via Discord when intervention is needed
-- **Real-time Dashboard** - Web UI showing metrics, alerts, and agent actions
+- **Multi-Server Support** - Deploy agents to multiple servers, monitor from a central panel
 - **Safe Action Execution** - Auto-executes safe actions, requires approval for risky ones
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Metrics Collection                           │
-│                   (systeminformation)                           │
+│                      NetData                                     │
+│              (System Metrics & Alerting)                         │
+│                 http://localhost:19999                           │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                │ Alerts via API
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      OpsAgent                                    │
+│    • Polls NetData for alerts                                    │
+│    • Groups related alerts into issues                           │
+│    • Sends to AI for analysis                                    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Rule Engine                                 │
-│            (Deterministic Threshold Evaluation)                 │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼ Alert Triggered
-┌─────────────────────────────────────────────────────────────────┐
-│                   AI Agent (kimi-k2.5)                          │
-│    • Analyzes the problem                                       │
-│    • Decides: auto-remediate OR notify humans OR both           │
-│    • Executes safe actions automatically                        │
+│                   AI Agent (kimi-k2.5)                           │
+│    • Analyzes the problem                                        │
+│    • Decides: auto-remediate OR notify humans OR both            │
+│    • Executes safe actions automatically                         │
 └─────────────────────────────────────────────────────────────────┘
                                 │
               ┌─────────────────┼─────────────────┐
               ▼                 ▼                 ▼
      ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-     │ Auto Actions │  │   Discord    │  │    Turso     │
-     │ (safe ops)   │  │ Notification │  │   Database   │
+     │ Auto Actions │  │   Discord    │  │ Control Panel│
+     │ (safe ops)   │  │ Notification │  │  (optional)  │
      └──────────────┘  └──────────────┘  └──────────────┘
+```
+
+## Installation Modes
+
+### Agent Only (Default)
+Monitor a single server with AI-powered analysis:
+```bash
+curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
+```
+
+### Control Panel Only
+Central dashboard to view all agents:
+```bash
+OPSAGENT_MODE=panel curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
+```
+
+### Both (Full Installation)
+Agent + Control Panel on the same machine:
+```bash
+OPSAGENT_MODE=both curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
 ```
 
 ## Configuration
@@ -118,7 +135,10 @@ Edit `~/.opsagent/.env` with your credentials:
 # Required: OpenCode API key for AI agent
 OPENCODE_API_KEY=sk-your-opencode-key
 
-# Required: Turso database for centralized storage
+# Option 1: Connect to a Control Panel (for agents)
+CONTROL_PANEL_URL=http://your-control-panel:3002
+
+# Option 2: Direct database (for standalone or control panel)
 TURSO_DATABASE_URL=libsql://your-db.turso.io
 TURSO_AUTH_TOKEN=your-turso-token
 
@@ -132,118 +152,52 @@ SERVER_NAME=web-server-1
 ## CLI Commands
 
 ```bash
-opsagent start        # Start the daemon
-opsagent stop         # Stop the daemon
-opsagent restart      # Restart the daemon
-opsagent status       # Show status
-opsagent logs         # Show recent logs
-opsagent logs-live    # Follow logs in real-time
-opsagent run          # Run in foreground (development)
-opsagent startup      # Enable auto-start on boot
-opsagent help         # Show all commands
+opsagent start           # Start the agent daemon
+opsagent stop            # Stop the agent daemon
+opsagent restart         # Restart the agent daemon
+opsagent status          # Show agent and NetData status
+opsagent logs [n]        # Show last n log lines (default: 100)
+opsagent logs-live       # Follow logs in real-time
+opsagent run             # Run in foreground (development)
+
+# Setup
+opsagent setup           # Install NetData and dependencies
+opsagent startup         # Enable auto-start on boot
+
+# NetData management
+opsagent netdata-status  # Check NetData status
+opsagent netdata-logs    # Show NetData logs
+opsagent netdata-reload  # Reload NetData alert config
+
+opsagent help            # Show all commands
 ```
 
-## Alternative Deployment Methods
+## Dashboards
 
-### Systemd (Linux)
-
-```bash
-# Install as systemd service
-sudo ~/.opsagent/systemd/install.sh
-
-# Manage with systemctl
-sudo systemctl start opsagent
-sudo systemctl stop opsagent
-sudo systemctl status opsagent
-sudo journalctl -u opsagent -f
-```
-
-### Docker
-
-```bash
-# Build and run
-docker compose up -d --build
-
-# View logs
-docker compose logs -f
-
-# Stop
-docker compose down
-```
-
-## Dashboard
-
-Access the web dashboard at http://localhost:3001
-
-The dashboard shows:
-- Real-time system metrics (CPU, memory, disk, network)
-- Active alerts and history
-- AI agent analysis and actions
+| Dashboard | URL | Description |
+|-----------|-----|-------------|
+| **NetData** | http://localhost:19999 | Real-time system metrics |
+| **OpsAgent** | http://localhost:3001 | AI analysis and actions |
+| **Control Panel** | http://localhost:3002 | Multi-server overview |
 
 ## Control Panel
 
-A separate Next.js control panel is available for centralized monitoring of all servers.
+For multi-server deployments, the Control Panel provides centralized monitoring:
 
 ```bash
-# Install and run
-cd packages/control-panel
-bun install
-cp ../../.env .env  # Use same Turso credentials
-bun run dev
+# On the control panel server
+OPSAGENT_MODE=panel curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
+cd ~/.opsagent && bun run panel
+
+# On each monitored server, set CONTROL_PANEL_URL in .env
+CONTROL_PANEL_URL=http://control-panel-host:3002
 ```
 
-Or from the root directory:
-```bash
-bun run panel      # Development
-bun run panel:start  # Production
-```
-
-Access at http://localhost:3002
-
-The control panel shows:
-- All registered servers and their status
+Features:
+- View all registered agents and their online/offline status
 - Aggregated alerts across all servers
 - AI agent analysis and recommendations
 - Action history with execution status
-
-## Configuration File
-
-Edit `config/default.yaml` to customize thresholds:
-
-```yaml
-collector:
-  interval: 5000  # Metrics polling interval (ms)
-
-rules:
-  cpu:
-    warning: 70      # Warning at 70% CPU
-    critical: 90     # Critical at 90% CPU
-    sustained:
-      threshold: 80
-      duration: 300000  # 5 minutes
-
-  memory:
-    warning: 75
-    critical: 90
-
-  disk:
-    warning: 80
-    critical: 95
-
-agent:
-  enabled: true
-  autoRemediate: false  # Set true to auto-execute all actions
-  model: "kimi-k2.5"
-
-dashboard:
-  enabled: true
-  port: 3001
-
-discord:
-  enabled: true
-  notifyOnCritical: true
-  notifyOnAgentAction: true
-```
 
 ## Agent Actions
 
@@ -257,74 +211,21 @@ discord:
 | `cleanup_disk` | Low | No | Clean temp files (requires approval) |
 | `custom_command` | High | No | Run shell command (requires approval) |
 
-## Multi-Server Deployment
+## Permission Levels
 
-Deploy OpsAgent on multiple servers, all pointing to the same Turso database:
+Configure via `config/netdata.yaml`:
 
-```bash
-# Server 1: web-server
-SERVER_NAME=web-server-1 opsagent start
-
-# Server 2: api-server
-SERVER_NAME=api-server-1 opsagent start
-
-# Server 3: db-server
-SERVER_NAME=db-server-1 opsagent start
+```yaml
+opsagent:
+  permissionLevel: limited  # readonly, limited, standard, full
 ```
 
-Query all servers from Turso:
-
-```sql
--- All active servers
-SELECT * FROM servers WHERE status = 'active';
-
--- Recent alerts across all servers
-SELECT s.hostname, a.severity, a.message, a.created_at
-FROM alerts a
-JOIN servers s ON a.server_id = s.id
-ORDER BY a.created_at DESC;
-
--- Pending actions requiring approval
-SELECT s.hostname, aa.action_type, aa.description
-FROM agent_actions aa
-JOIN servers s ON aa.server_id = s.id
-WHERE aa.status = 'skipped';
-```
-
-## Database Schema
-
-```
-servers           → Track all monitoring instances
-alerts            → All alerts with severity, metrics, thresholds
-agent_responses   → AI analysis and recommendations
-agent_actions     → Individual remediation actions and results
-metrics_snapshots → Historical metrics for dashboards
-```
-
-## Development
-
-```bash
-# Run in foreground (development mode)
-opsagent run
-
-# Or with bun directly
-bun run dev
-```
-
-## Testing
-
-Use the included stress testing tools:
-
-```bash
-# CPU stress test
-./scripts/test-stress.sh cpu
-
-# Memory stress test
-./scripts/test-stress.sh memory
-
-# Combined stress test
-./scripts/test-stress.sh all
-```
+| Level | Description |
+|-------|-------------|
+| `readonly` | Only monitor and notify, no actions |
+| `limited` | Safe actions only (clear_cache, log_analysis) |
+| `standard` | Medium-risk actions with limits |
+| `full` | All actions (use with caution) |
 
 ## Project Structure
 
@@ -336,94 +237,57 @@ opsagent/
 │   ├── opsagent          # CLI command wrapper
 │   └── opsagent.sh       # CLI implementation
 ├── src/
-│   ├── index.ts          # Entry point
+│   ├── index.ts          # Entry point (NetData integration)
 │   ├── config/           # Configuration loading
-│   ├── collector/        # Metrics collection
-│   ├── rules/            # Rule engine
+│   ├── collector/        # NetData alert collector
 │   ├── alerts/           # Alert management
 │   ├── agent/            # AI agent interface
-│   ├── db/               # Turso database
+│   ├── api/              # Backend abstraction (DB or Control Panel)
+│   ├── db/               # Direct database access
 │   ├── notifications/    # Discord integration
 │   └── dashboard/        # Web UI (per-server)
 ├── packages/
 │   └── control-panel/    # Next.js centralized dashboard
 ├── config/
-│   └── default.yaml      # Default configuration
-├── systemd/
-│   ├── opsagent.service  # Systemd unit file
-│   └── install.sh        # Systemd installer
-├── public/               # Dashboard frontend
-├── scripts/              # Utility scripts
+│   └── netdata.yaml      # NetData integration config
+├── scripts/
+│   └── install-netdata.sh # NetData installer
 ├── ecosystem.config.cjs  # PM2 configuration
-├── docker-compose.yml
-├── Dockerfile
 └── package.json
 ```
 
-## Logs
+## Development
 
-Logs are stored in `~/.opsagent/logs/` when running as a daemon:
-- `out.log` - Standard output
-- `error.log` - Error output
-
-View logs:
 ```bash
-opsagent logs          # Recent logs
-opsagent logs-live     # Follow logs
+# Run in foreground (development mode)
+opsagent run
 
-# Or with systemd
-sudo journalctl -u opsagent -f
+# Or with bun directly
+bun run dev
+
+# Run tests
+bun test
 ```
 
 ## Advanced Installation Options
 
-The installer supports environment variables for customization:
-
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPSAGENT_DIR` | `~/.opsagent` | Installation directory |
-| `OPSAGENT_NO_START` | (unset) | Set to `1` to skip starting daemon |
+| `OPSAGENT_MODE` | `agent` | Installation mode: agent, panel, both |
+| `OPSAGENT_NO_START` | (unset) | Set to skip starting daemon |
 | `OPSAGENT_BRANCH` | `main` | Git branch to install |
 
 ```bash
-# Example: Install to custom directory without starting
-OPSAGENT_DIR=/opt/opsagent OPSAGENT_NO_START=1 \
-  curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+# Example: Install control panel to custom directory
+OPSAGENT_DIR=/opt/opsagent OPSAGENT_MODE=panel \
+  curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
 ```
-
-### Manual Installation
-
-<details>
-<summary>Click to expand</summary>
-
-```bash
-# Install Bun
-curl -fsSL https://bun.sh/install | bash
-
-# Clone repository
-git clone https://github.com/sjcotto/opsagent.git ~/.opsagent
-cd ~/.opsagent
-
-# Install dependencies
-bun install
-
-# Install PM2
-bun install -g pm2
-
-# Configure
-cp .env.example .env
-nano .env  # Add your API keys
-
-# Start
-./bin/opsagent start
-```
-
-</details>
 
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/uninstall.sh | bash
 ```
 
 Or manually:

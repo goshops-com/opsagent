@@ -255,6 +255,10 @@ export class Database {
     return { ...this.serverInfo };
   }
 
+  getClient(): Client {
+    return this.client;
+  }
+
   async close(): Promise<void> {
     await this.client.execute({
       sql: "UPDATE servers SET status = 'offline', last_seen_at = ? WHERE id = ?",

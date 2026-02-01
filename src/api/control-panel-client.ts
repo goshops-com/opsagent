@@ -120,7 +120,7 @@ export class ControlPanelClient {
   async checkHealth(): Promise<boolean> {
     try {
       const response = await this.fetch("/api/health");
-      const data = await response.json();
+      const data = (await response.json()) as { success?: boolean };
       return data.success === true;
     } catch (error) {
       return false;

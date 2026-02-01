@@ -146,7 +146,7 @@ async function main() {
         // Send to AI agent for analysis
         const result = await agent.handleAlert(
           opsAgentAlert,
-          {}, // No direct metrics, alert contains the value
+          null, // No direct metrics, alert contains the value
           alertManager.getAlertHistory()
         );
 
@@ -340,7 +340,7 @@ async function main() {
   // Handle state requests from dashboard
   if (dashboard) {
     dashboard.getWebSocketManager().on("state-requested", async (socketId: string) => {
-      let openIssues = [];
+      let openIssues: unknown[] = [];
       if (issueManager) {
         openIssues = await issueManager.getOpenIssues();
       }

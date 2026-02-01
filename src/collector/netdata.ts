@@ -59,7 +59,7 @@ export class NetDataAlertCollector extends EventEmitter {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data: NetDataAlarmResponse = await response.json();
+      const data = (await response.json()) as NetDataAlarmResponse;
       const alerts: NetDataAlert[] = [];
 
       for (const [key, alert] of Object.entries(data.alarms)) {

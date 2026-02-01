@@ -330,7 +330,7 @@ export class IssueManager {
       args: [this.serverId],
     });
 
-    return result.rows.map((row) => ({
+    return result.rows.map((row: Record<string, unknown>) => ({
       id: row.id as string,
       serverId: row.server_id as string,
       alertFingerprint: row.alert_fingerprint as string,
@@ -388,7 +388,7 @@ export class IssueManager {
       args: [issueId],
     });
 
-    const comments: IssueComment[] = commentsResult.rows.map((row) => ({
+    const comments: IssueComment[] = commentsResult.rows.map((row: Record<string, unknown>) => ({
       id: row.id as number,
       issueId: row.issue_id as string,
       authorType: row.author_type as IssueComment["authorType"],

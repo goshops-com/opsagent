@@ -3,7 +3,7 @@ import type { SystemMetrics } from "../collector/metrics.js";
 
 export function buildAlertPrompt(
   alert: Alert,
-  metrics: SystemMetrics,
+  metrics: SystemMetrics | null,
   recentAlerts: Alert[]
 ): string {
   const formatBytes = (bytes: number): string => {
@@ -19,17 +19,9 @@ export function buildAlertPrompt(
 
   const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 
-  let prompt = `# System Alert - Remediation Required
-
-## Alert Details
-- **Severity**: ${alert.severity.toUpperCase()}
-- **Message**: ${alert.message}
-- **Metric**: ${alert.metric}
-- **Current Value**: ${alert.currentValue}
-- **Threshold**: ${alert.threshold}
-- **Time**: ${new Date(alert.timestamp).toISOString()}
-
-## Current System Metrics
+  let metricsSection = "";
+  if (metrics) {
+    metricsSection = `## Current System Metrics
 
 ### CPU
 - Usage: ${formatPercent(metrics.cpu.usage)}
@@ -64,7 +56,24 @@ ${metrics.disk.mounts
 ${metrics.processes.topCpu.map((p) => `- ${p.name} (PID ${p.pid}): ${formatPercent(p.cpu)} CPU`).join("\n")}
 
 #### Top Memory Consumers
-${metrics.processes.topMemory.map((p) => `- ${p.name} (PID ${p.pid}): ${formatPercent(p.memory)} Memory`).join("\n")}
+${metrics.processes.topMemory.map((p) => `- ${p.name} (PID ${p.pid}): ${formatPercent(p.memory)} Memory`).join("\n")}`;
+  } else {
+    metricsSection = `## Current System Metrics
+(Detailed metrics not available - using NetData alert data)`;
+  }
+
+  let prompt = `# System Alert - Remediation Required
+
+## Alert Details
+- **Severity**: ${alert.severity.toUpperCase()}
+- **Message**: ${alert.message}
+- **Metric**: ${alert.metric}
+- **Current Value**: ${alert.currentValue}
+- **Threshold**: ${alert.threshold}
+- **Time**: ${new Date(alert.timestamp).toISOString()}
+${alert.source ? `- **Source**: ${alert.source}` : ""}
+
+${metricsSection}
 
 ## Recent Alert History
 ${

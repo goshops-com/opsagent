@@ -41,7 +41,7 @@ export class AIAgentInterface extends EventEmitter {
 
   async handleAlert(
     alert: Alert,
-    metrics: SystemMetrics,
+    metrics: SystemMetrics | null,
     recentAlerts: Alert[]
   ): Promise<AgentResult | null> {
     if (!this.enabled) {

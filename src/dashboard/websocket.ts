@@ -46,6 +46,14 @@ export class WebSocketManager {
       metrics: SystemMetrics | null;
       alerts: Alert[];
       agentResults: AgentResult[];
+      netdataAlerts?: unknown[];
+      openIssues?: unknown[];
+      permissions?: {
+        level: string;
+        autoRemediate: boolean;
+        actionsThisHour: number;
+        maxActionsPerHour: number;
+      };
     }
   ): void {
     this.io.to(socketId).emit("state", state);

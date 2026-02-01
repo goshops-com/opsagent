@@ -89,6 +89,53 @@ export class AlertManager extends EventEmitter {
     }
   }
 
+  /**
+   * Add an alert directly (e.g., from NetData)
+   */
+  addAlert(alert: Alert): void {
+    const key = `${alert.metric}-${alert.severity}-${alert.message}`;
+
+    // Skip if in cooldown
+    if (this.isInCooldown(key)) {
+      return;
+    }
+
+    this.alerts.set(key, alert);
+    this.cooldowns.set(key, Date.now());
+    this.addToHistory(alert);
+
+    this.emit("alert", { type: "new", alert } as AlertEvent);
+  }
+
+  /**
+   * Update an existing alert
+   */
+  updateAlert(alertId: string, updates: Partial<Alert>): boolean {
+    for (const [key, alert] of this.alerts) {
+      if (alert.id === alertId) {
+        Object.assign(alert, updates);
+        this.emit("alert", { type: "updated", alert } as AlertEvent);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Resolve an alert by ID
+   */
+  resolveAlert(alertId: string): boolean {
+    for (const [key, alert] of this.alerts) {
+      if (alert.id === alertId) {
+        alert.resolvedAt = Date.now();
+        this.alerts.delete(key);
+        this.emit("alert", { type: "resolved", alert } as AlertEvent);
+        return true;
+      }
+    }
+    return false;
+  }
+
   acknowledgeAlert(alertId: string): boolean {
     for (const alert of this.alerts.values()) {
       if (alert.id === alertId) {
