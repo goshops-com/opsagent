@@ -18,6 +18,7 @@ export interface NetDataConfig {
 
 export interface OpsAgentConfig {
   autoRemediate: boolean;
+  provider: "opencode" | "openrouter";
   model: string;
   permissionLevel: "full" | "limited" | "readonly";
 }
@@ -57,6 +58,7 @@ const defaultNetDataConfig: NetDataIntegrationConfig = {
   },
   opsagent: {
     autoRemediate: false,
+    provider: "opencode",
     model: "kimi-k2.5",
     permissionLevel: "limited",
   },

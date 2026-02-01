@@ -392,13 +392,59 @@ setup_config() {
         info "Let's configure OpsAgent (press Enter to skip optional fields)"
         echo ""
 
-        # For agent or both: ask for OpenCode API Key
+        # For agent or both: ask for AI provider
         if [[ "$INSTALL_MODE" == "agent" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
-            echo -e "${BOLD}OpenCode API Key${NC} ${DIM}(required for AI analysis)${NC}"
-            echo -e "${DIM}Get yours at: https://opencode.ai${NC}"
-            read -p "  API Key: " opencode_key
-            if [[ -n "$opencode_key" ]]; then
-                sed_inplace "s|OPENCODE_API_KEY=.*|OPENCODE_API_KEY=${opencode_key}|" "$env_file"
+            echo -e "${BOLD}AI Provider${NC} ${DIM}(for system analysis)${NC}"
+            echo -e "  ${BOLD}1)${NC} OpenCode     ${DIM}- https://opencode.ai (default)${NC}"
+            echo -e "  ${BOLD}2)${NC} OpenRouter   ${DIM}- https://openrouter.ai${NC}"
+            read -p "  Select provider [1-2] (default: 1): " provider_choice
+
+            local ai_provider="opencode"
+            local default_model="kimi-k2.5"
+            local provider_name="OpenCode"
+
+            case "${provider_choice:-1}" in
+                2)
+                    ai_provider="openrouter"
+                    default_model="anthropic/claude-sonnet-4"
+                    provider_name="OpenRouter"
+                    ;;
+            esac
+            echo ""
+
+            echo -e "${BOLD}${provider_name} API Key${NC} ${DIM}(required for AI analysis)${NC}"
+            if [[ "$ai_provider" == "opencode" ]]; then
+                echo -e "${DIM}Get yours at: https://opencode.ai${NC}"
+                read -p "  API Key: " api_key
+                if [[ -n "$api_key" ]]; then
+                    sed_inplace "s|OPENCODE_API_KEY=.*|OPENCODE_API_KEY=${api_key}|" "$env_file"
+                fi
+            else
+                echo -e "${DIM}Get yours at: https://openrouter.ai/keys${NC}"
+                read -p "  API Key: " api_key
+                if [[ -n "$api_key" ]]; then
+                    echo "" >> "$env_file"
+                    echo "# OpenRouter configuration" >> "$env_file"
+                    echo "OPENROUTER_API_KEY=${api_key}" >> "$env_file"
+                fi
+            fi
+            echo ""
+
+            echo -e "${BOLD}AI Model${NC} ${DIM}(optional, press Enter for default: ${default_model})${NC}"
+            if [[ "$ai_provider" == "openrouter" ]]; then
+                echo -e "${DIM}Popular models: anthropic/claude-sonnet-4, openai/gpt-4o, google/gemini-pro-1.5${NC}"
+            else
+                echo -e "${DIM}Available models: kimi-k2.5, gpt-4o, claude-3.5-sonnet${NC}"
+            fi
+            read -p "  Model: " ai_model
+            ai_model="${ai_model:-$default_model}"
+
+            # Update config/netdata.yaml with provider and model
+            local config_file="$INSTALL_DIR/config/netdata.yaml"
+            if [[ -f "$config_file" ]]; then
+                sed_inplace "s|provider:.*|provider: ${ai_provider}|" "$config_file"
+                sed_inplace "s|model:.*|model: ${ai_model}|" "$config_file"
+                success "AI provider set to ${provider_name} with model ${ai_model}"
             fi
             echo ""
         fi

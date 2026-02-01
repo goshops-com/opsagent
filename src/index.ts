@@ -55,6 +55,7 @@ async function main() {
   );
   
   const agent = new AIAgentInterface(
+    config.opsagent.provider || "opencode",
     config.opsagent.model,
     permissions.autoRemediate,
     true    // always enabled with NetData

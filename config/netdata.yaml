@@ -1,0 +1,40 @@
+# OpsAgent Configuration with NetData Integration
+# Copy this file and customize for your environment
+
+# NetData connection settings
+netdata:
+  url: http://localhost:19999
+  pollInterval: 30  # seconds between alert checks
+  monitorSeverity: warning  # warning, critical, or all
+  acknowledgeAlerts: true
+  severityMapping:
+    warning: warning
+    critical: critical
+    clear: resolved
+  ignoreAlerts: []  # patterns to ignore, e.g., ["disk_space_*"]
+  forceAlerts: []   # patterns to always process
+
+# OpsAgent AI settings
+opsagent:
+  # AI provider: opencode or openrouter
+  provider: opencode
+  # Model to use (depends on provider)
+  # OpenCode models: kimi-k2.5, gpt-4o, claude-3.5-sonnet
+  # OpenRouter models: anthropic/claude-sonnet-4, openai/gpt-4o, google/gemini-pro-1.5
+  model: kimi-k2.5
+  # Auto-remediate issues without human approval
+  autoRemediate: false
+  # Permission level: full, limited, or readonly
+  permissionLevel: limited
+
+# Discord notifications
+discord:
+  enabled: true
+  webhookUrl: ${DISCORD_WEBHOOK_URL}
+  notifyOnCritical: true
+  notifyOnAgentAction: true
+
+# Local dashboard
+dashboard:
+  enabled: true
+  port: 3001

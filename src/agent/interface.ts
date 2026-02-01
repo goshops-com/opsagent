@@ -9,6 +9,27 @@ import {
 } from "./actionParser.js";
 import { ActionExecutor, type ExecutionResult } from "./executor.js";
 
+export type AIProvider = "opencode" | "openrouter";
+
+export interface ProviderConfig {
+  apiKey: string;
+  baseURL: string;
+  defaultModel: string;
+}
+
+const PROVIDERS: Record<AIProvider, ProviderConfig> = {
+  opencode: {
+    apiKey: process.env.OPENCODE_API_KEY || "",
+    baseURL: "https://opencode.ai/zen/v1",
+    defaultModel: "kimi-k2.5",
+  },
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || "",
+    baseURL: "https://openrouter.ai/api/v1",
+    defaultModel: "anthropic/claude-sonnet-4",
+  },
+};
+
 export interface AgentResult {
   alertId: string;
   response: AgentResponse | null;
@@ -21,22 +42,29 @@ export class AIAgentInterface extends EventEmitter {
   private client: OpenAI;
   private executor: ActionExecutor;
   private model: string;
+  private provider: AIProvider;
   private enabled: boolean;
   private results: AgentResult[] = [];
 
   constructor(
-    model: string = "kimi-k2.5",
+    provider: AIProvider = "opencode",
+    model?: string,
     autoRemediate: boolean = false,
     enabled: boolean = true
   ) {
     super();
+    this.provider = provider;
+    const providerConfig = PROVIDERS[provider];
+
     this.client = new OpenAI({
-      apiKey: process.env.OPENCODE_API_KEY,
-      baseURL: "https://opencode.ai/zen/v1",
+      apiKey: providerConfig.apiKey,
+      baseURL: providerConfig.baseURL,
     });
     this.executor = new ActionExecutor(autoRemediate);
-    this.model = model;
+    this.model = model || providerConfig.defaultModel;
     this.enabled = enabled;
+
+    console.log(`[Agent] Using ${provider} provider with model: ${this.model}`);
   }
 
   async handleAlert(
