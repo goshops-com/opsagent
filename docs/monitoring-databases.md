@@ -362,48 +362,229 @@ Actions:
 
 ## Redis
 
-### Quick Setup
+### Metrics Collected
+
+NetData collects 21+ Redis metrics including:
+
+- **Memory**: used memory, fragmentation ratio
+- **Clients**: connected clients, blocked clients
+- **Commands**: commands/sec, command latency (per command type)
+- **Keys**: total keys, expiring keys, evictions, expirations
+- **Connections**: received connections, rejected connections
+- **Persistence**: RDB/AOF status, last save time
+- **Replication**: connected replicas, replication offset
+- **Network**: input/output bytes
+
+### Setup
+
+#### 1. Configure Redis (if using authentication)
+
+Redis authentication is recommended for production:
 
 ```bash
-# Configure NetData
+# In redis.conf or via command line
+requirepass your-secure-password
+```
+
+#### 2. Configure NetData
+
+```bash
 sudo nano /etc/netdata/go.d/redis.conf
 ```
 
 ```yaml
 jobs:
-  - name: local
-    address: redis://:password@localhost:6379
+  - name: local_redis
+    address: "redis://:your-password@localhost:6379"
 ```
 
-### Recommended Alerts
+For Redis Cluster or Sentinel:
 
 ```yaml
-# /etc/netdata/health.d/redis.conf
+jobs:
+  - name: redis_master
+    address: "redis://:password@master.redis.local:6379"
 
+  - name: redis_replica1
+    address: "redis://:password@replica1.redis.local:6379"
+
+  - name: redis_replica2
+    address: "redis://:password@replica2.redis.local:6379"
+```
+
+For Redis without authentication:
+
+```yaml
+jobs:
+  - name: local_redis
+    address: "redis://localhost:6379"
+```
+
+#### 3. Create Custom Alerts
+
+```bash
+sudo nano /etc/netdata/health.d/redis.conf
+```
+
+```yaml
+# Memory usage
 template: redis_memory_high
       on: redis.memory
-  lookup: average -1m unaligned percentage of used
-   units: %
+  lookup: average -1m unaligned of used
+   units: bytes
    every: 30s
-    warn: $this > 80
-    crit: $this > 95
-    info: Redis memory usage is high ($this%)
+    warn: $this > 1000000000
+    crit: $this > 3000000000
+    info: Redis memory usage is high ($this bytes)
+      to: sysadmin
 
+# Memory fragmentation (values > 1.5 indicate fragmentation)
+template: redis_fragmentation_high
+      on: redis.mem_fragmentation_ratio
+  lookup: average -5m unaligned
+   units: ratio
+   every: 1m
+    warn: $this > 1.5
+    crit: $this > 2.0
+    info: Redis memory fragmentation is high ($this ratio)
+      to: sysadmin
+
+# Commands per second
+template: redis_commands_high
+      on: redis.commands
+  lookup: average -1m unaligned
+   units: commands/s
+   every: 30s
+    warn: $this > 50000
+    crit: $this > 100000
+    info: Redis command rate is high ($this cmd/s)
+      to: sysadmin
+
+# Connected clients
+template: redis_clients_high
+      on: redis.clients
+  lookup: average -1m unaligned of connected
+   units: clients
+   every: 30s
+    warn: $this > 1000
+    crit: $this > 5000
+    info: Redis has many connected clients ($this)
+      to: sysadmin
+
+# Key evictions (indicates memory pressure)
+template: redis_evictions
+      on: redis.key_eviction_events
+  lookup: sum -5m unaligned
+   units: keys
+   every: 1m
+    warn: $this > 100
+    crit: $this > 1000
+    info: Redis is evicting keys due to memory pressure ($this evictions)
+      to: sysadmin
+
+# Cache hit rate
+template: redis_hit_rate_low
+      on: redis.key_lookup_hit_rate
+  lookup: average -5m unaligned
+   units: %
+   every: 1m
+    warn: $this < 90
+    crit: $this < 70
+    info: Redis cache hit rate is low ($this%)
+      to: sysadmin
+
+# Rejected connections
 template: redis_connections_rejected
       on: redis.connections
   lookup: sum -5m unaligned of rejected
    units: connections
    every: 1m
     warn: $this > 0
-    info: Redis is rejecting connections ($this rejected)
+    info: Redis is rejecting connections ($this rejected in 5 min)
+      to: sysadmin
 
-template: redis_keyspace_misses_high
-      on: redis.keyspace_hit_rate
-  lookup: average -5m unaligned
-   units: %
-   every: 1m
-    warn: $this < 80
-    info: Redis cache hit rate is low ($this%)
+# Ping latency (slow responses)
+template: redis_latency_high
+      on: redis.ping_latency
+  lookup: average -1m unaligned
+   units: microseconds
+   every: 30s
+    warn: $this > 1000
+    crit: $this > 5000
+    info: Redis ping latency is high ($this μs)
+      to: sysadmin
+```
+
+#### 4. Reload and Verify
+
+```bash
+# Reload health configuration
+sudo netdatacli reload-health
+
+# Check metrics
+curl -s "http://localhost:19999/api/v1/charts" | grep redis
+
+# Check alerts
+curl -s "http://localhost:19999/api/v1/alarms" | grep redis
+```
+
+### Example OpsAgent Analysis
+
+When a Redis alert fires, OpsAgent provides analysis like:
+
+```
+Alert: Redis memory usage is high (2.8 GB)
+
+Analysis: Redis is consuming significant memory. This could indicate:
+- Large dataset growth
+- Memory fragmentation
+- Lack of key expiration policies
+- Memory leak from client-side buffering
+
+Current state:
+- Memory used: 2.8 GB
+- Fragmentation ratio: 1.2
+- Keys: 1.5M
+- Eviction policy: noeviction
+
+Recommendations:
+1. Check largest keys: redis-cli --bigkeys
+2. Analyze memory: redis-cli MEMORY DOCTOR
+3. Review key expiration: redis-cli INFO keyspace
+4. Consider enabling maxmemory with appropriate eviction policy
+
+Actions:
+- [notify_human] Alert ops team about Redis memory pressure
+- [log_analysis] Check Redis slow log for problematic commands
+```
+
+### Monitoring Redis Cluster
+
+For Redis Cluster deployments, monitor all nodes:
+
+```yaml
+# /etc/netdata/go.d/redis.conf
+jobs:
+  - name: redis_node_1
+    address: "redis://:password@node1:6379"
+  - name: redis_node_2
+    address: "redis://:password@node2:6379"
+  - name: redis_node_3
+    address: "redis://:password@node3:6379"
+```
+
+Add cluster-specific alerts:
+
+```yaml
+# Monitor replication
+template: redis_replica_disconnected
+      on: redis.connected_replicas
+  lookup: average -1m unaligned
+   units: replicas
+   every: 30s
+    warn: $this < 1
+    info: Redis master has no connected replicas
+      to: sysadmin
 ```
 
 ## Best Practices
