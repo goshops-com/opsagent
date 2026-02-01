@@ -19,6 +19,14 @@ An intelligent system monitoring agent that uses [NetData](https://netdata.cloud
 
 ---
 
+## Demo
+
+https://github.com/goshops-com/opsagent/raw/main/docs/demo.mp4
+
+*See OpsAgent in action: architecture overview, dashboard, issue tracking, AI analysis, and human-in-the-loop feedback.*
+
+---
+
 ## Installation
 
 ```bash
