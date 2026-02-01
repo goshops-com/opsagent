@@ -36,11 +36,47 @@ export interface NetDataCollectorConfig {
   forceAlerts?: string[];
 }
 
+export interface NetDataMetrics {
+  cpu: {
+    usage: number;
+    loadAverage: number[];
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    usedPercent: number;
+    swapUsed: number;
+    swapPercent: number;
+  };
+  disk: {
+    mounts: Array<{
+      mount: string;
+      size: number;
+      used: number;
+      usedPercent: number;
+    }>;
+  };
+  network: {
+    totalRxBytes: number;
+    totalTxBytes: number;
+    errorRate: number;
+  };
+  processes: {
+    running: number;
+    sleeping: number;
+    zombie: number;
+    topCpu: Array<{ name: string; pid: number; cpu: number; memory: number }>;
+    topMemory: Array<{ name: string; pid: number; cpu: number; memory: number }>;
+  };
+}
+
 export class NetDataAlertCollector extends EventEmitter {
   private config: NetDataCollectorConfig;
   private timer: ReturnType<typeof setInterval> | null = null;
   private knownAlerts: Map<string, NetDataAlert> = new Map();
   private isRunning = false;
+  private cachedMetrics: NetDataMetrics | null = null;
 
   constructor(config: NetDataCollectorConfig) {
     super();
@@ -49,6 +85,142 @@ export class NetDataAlertCollector extends EventEmitter {
       ignoreAlerts: config.ignoreAlerts || [],
       forceAlerts: config.forceAlerts || [],
     };
+  }
+
+  async fetchMetrics(): Promise<NetDataMetrics | null> {
+    try {
+      const baseUrl = this.config.url;
+
+      // Fetch multiple metrics in parallel
+      const [cpuRes, ramRes, loadRes, diskRes, netRes] = await Promise.all([
+        fetch(`${baseUrl}/api/v1/data?chart=system.cpu&points=1&format=json`).catch(() => null),
+        fetch(`${baseUrl}/api/v1/data?chart=system.ram&points=1&format=json`).catch(() => null),
+        fetch(`${baseUrl}/api/v1/data?chart=system.load&points=1&format=json`).catch(() => null),
+        fetch(`${baseUrl}/api/v1/data?chart=disk_space._&points=1&format=json`).catch(() => null),
+        fetch(`${baseUrl}/api/v1/data?chart=system.net&points=1&format=json`).catch(() => null),
+      ]);
+
+      // Parse CPU
+      let cpuUsage = 0;
+      if (cpuRes?.ok) {
+        const cpuData = await cpuRes.json();
+        if (cpuData.data?.[0]) {
+          // Sum all CPU usage values (user, system, nice, etc)
+          cpuUsage = cpuData.data[0].slice(1).reduce((a: number, b: number) => a + Math.abs(b || 0), 0);
+        }
+      }
+
+      // Parse Load
+      let loadAverage = [0, 0, 0];
+      if (loadRes?.ok) {
+        const loadData = await loadRes.json();
+        if (loadData.data?.[0]) {
+          loadAverage = [
+            loadData.data[0][1] || 0,
+            loadData.data[0][2] || 0,
+            loadData.data[0][3] || 0,
+          ];
+        }
+      }
+
+      // Parse RAM
+      let memory = { total: 0, used: 0, free: 0, usedPercent: 0, swapUsed: 0, swapPercent: 0 };
+      if (ramRes?.ok) {
+        const ramData = await ramRes.json();
+        if (ramData.data?.[0]) {
+          const labels = ramData.labels || [];
+          const values = ramData.data[0];
+          const freeIdx = labels.indexOf("free");
+          const usedIdx = labels.indexOf("used");
+          const cachedIdx = labels.indexOf("cached");
+          const buffersIdx = labels.indexOf("buffers");
+
+          const free = Math.abs(values[freeIdx] || 0);
+          const used = Math.abs(values[usedIdx] || 0);
+          const cached = Math.abs(values[cachedIdx] || 0);
+          const buffers = Math.abs(values[buffersIdx] || 0);
+          const total = free + used + cached + buffers;
+
+          memory = {
+            total: total * 1024 * 1024, // Convert to bytes
+            used: used * 1024 * 1024,
+            free: free * 1024 * 1024,
+            usedPercent: total > 0 ? (used / total) * 100 : 0,
+            swapUsed: 0,
+            swapPercent: 0,
+          };
+        }
+      }
+
+      // Parse Disk - use info endpoint for better data
+      let disk = { mounts: [] as NetDataMetrics["disk"]["mounts"] };
+      try {
+        const diskInfoRes = await fetch(`${baseUrl}/api/v1/info`);
+        if (diskInfoRes.ok) {
+          const info = await diskInfoRes.json();
+          // Get disk space from charts
+          const diskCharts = Object.keys(info.charts || {}).filter(c => c.startsWith("disk_space."));
+          for (const chartName of diskCharts.slice(0, 4)) {
+            const mount = chartName.replace("disk_space.", "/").replace(/_/g, "/");
+            const chartRes = await fetch(`${baseUrl}/api/v1/data?chart=${chartName}&points=1&format=json`);
+            if (chartRes.ok) {
+              const chartData = await chartRes.json();
+              if (chartData.data?.[0]) {
+                const avail = Math.abs(chartData.data[0][1] || 0);
+                const used = Math.abs(chartData.data[0][2] || 0);
+                const total = avail + used;
+                if (total > 0) {
+                  disk.mounts.push({
+                    mount: mount === "//" ? "/" : mount,
+                    size: total * 1024 * 1024 * 1024,
+                    used: used * 1024 * 1024 * 1024,
+                    usedPercent: (used / total) * 100,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore disk errors
+      }
+
+      // Parse Network
+      let network = { totalRxBytes: 0, totalTxBytes: 0, errorRate: 0 };
+      if (netRes?.ok) {
+        const netData = await netRes.json();
+        if (netData.data?.[0]) {
+          network = {
+            totalRxBytes: Math.abs(netData.data[0][1] || 0) * 1024,
+            totalTxBytes: Math.abs(netData.data[0][2] || 0) * 1024,
+            errorRate: 0,
+          };
+        }
+      }
+
+      this.cachedMetrics = {
+        cpu: { usage: cpuUsage, loadAverage },
+        memory,
+        disk,
+        network,
+        processes: {
+          running: 0,
+          sleeping: 0,
+          zombie: 0,
+          topCpu: [],
+          topMemory: [],
+        },
+      };
+
+      return this.cachedMetrics;
+    } catch (error) {
+      console.error("[NetData] Error fetching metrics:", error);
+      return this.cachedMetrics;
+    }
+  }
+
+  getCachedMetrics(): NetDataMetrics | null {
+    return this.cachedMetrics;
   }
 
   async fetchAlerts(): Promise<NetDataAlert[]> {

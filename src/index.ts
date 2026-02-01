@@ -345,9 +345,12 @@ async function main() {
       if (issueManager) {
         openIssues = await issueManager.getOpenIssues();
       }
-      
+
+      // Fetch metrics from NetData
+      const metrics = await netdataCollector.fetchMetrics();
+
       dashboard!.getWebSocketManager().sendState(socketId, {
-        metrics: null,
+        metrics: metrics as any,
         alerts: alertManager.getActiveAlerts(),
         agentResults: agent.getResults(),
         netdataAlerts: netdataCollector.getKnownAlerts(),
@@ -360,6 +363,14 @@ async function main() {
         },
       });
     });
+
+    // Periodically send metrics updates to dashboard
+    setInterval(async () => {
+      const metrics = await netdataCollector.fetchMetrics();
+      if (metrics) {
+        dashboard!.getWebSocketManager().broadcastMetrics(metrics as any);
+      }
+    }, 5000); // Every 5 seconds
   }
 
   // Start collecting NetData alerts
