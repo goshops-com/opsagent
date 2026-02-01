@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM oven/bun:1-slim
 
 # Install stress tools for testing
 RUN apt-get update && apt-get install -y \
@@ -9,17 +9,14 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lock* ./
 
 # Install dependencies
-RUN npm install
+RUN bun install --frozen-lockfile || bun install
 
 # Copy source
 COPY . .
 
-# Build
-RUN npm run build
-
 EXPOSE 3001
 
-CMD ["npm", "run", "dev"]
+CMD ["bun", "run", "src/index.ts"]

@@ -1,0 +1,30 @@
+[Unit]
+Description=OpsAgent - AI-Powered System Monitor
+Documentation=https://github.com/sjcotto/opsagent
+After=network.target
+
+[Service]
+Type=simple
+User=opsagent
+Group=opsagent
+WorkingDirectory=/opt/opsagent
+ExecStart=/usr/local/bin/bun run src/index.ts
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opsagent
+
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/opsagent/.env
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/opsagent/logs
+
+[Install]
+WantedBy=multi-user.target
