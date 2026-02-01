@@ -183,6 +183,32 @@ The dashboard shows:
 - Active alerts and history
 - AI agent analysis and actions
 
+## Control Panel
+
+A separate Next.js control panel is available for centralized monitoring of all servers.
+
+```bash
+# Install and run
+cd packages/control-panel
+bun install
+cp ../../.env .env  # Use same Turso credentials
+bun run dev
+```
+
+Or from the root directory:
+```bash
+bun run panel      # Development
+bun run panel:start  # Production
+```
+
+Access at http://localhost:3002
+
+The control panel shows:
+- All registered servers and their status
+- Aggregated alerts across all servers
+- AI agent analysis and recommendations
+- Action history with execution status
+
 ## Configuration File
 
 Edit `config/default.yaml` to customize thresholds:
@@ -320,7 +346,9 @@ opsagent/
 │   ├── agent/            # AI agent interface
 │   ├── db/               # Turso database
 │   ├── notifications/    # Discord integration
-│   └── dashboard/        # Web UI
+│   └── dashboard/        # Web UI (per-server)
+├── packages/
+│   └── control-panel/    # Next.js centralized dashboard
 ├── config/
 │   ├── default.yaml      # Default configuration
 │   └── test.yaml         # Test configuration

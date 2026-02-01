@@ -4,6 +4,9 @@
   "description": "AI-powered system monitoring with automated remediation",
   "main": "src/index.ts",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "bin": {
     "opsagent": "./bin/opsagent.sh"
   },
@@ -16,7 +19,10 @@
     "daemon:restart": "pm2 restart opsagent",
     "daemon:status": "pm2 status opsagent",
     "daemon:logs": "pm2 logs opsagent",
-    "postinstall": "mkdir -p logs"
+    "postinstall": "mkdir -p logs",
+    "panel": "bun run --cwd packages/control-panel dev",
+    "panel:build": "bun run --cwd packages/control-panel build",
+    "panel:start": "bun run --cwd packages/control-panel start"
   },
   "repository": {
     "type": "git",
