@@ -1,13 +1,15 @@
 import { Server as SocketIOServer } from "socket.io";
+import { EventEmitter } from "events";
 import type { Server as HTTPServer } from "http";
 import type { SystemMetrics } from "../collector/metrics.js";
 import type { Alert, AlertEvent } from "../alerts/types.js";
 import type { AgentResult } from "../agent/interface.js";
 
-export class WebSocketManager {
+export class WebSocketManager extends EventEmitter {
   private io: SocketIOServer;
 
   constructor(httpServer: HTTPServer) {
+    super();
     this.io = new SocketIOServer(httpServer, {
       cors: {
         origin: "*",
@@ -23,7 +25,8 @@ export class WebSocketManager {
       });
 
       socket.on("request-state", () => {
-        this.emit("state-requested", socket.id);
+        // Emit to EventEmitter (for index.ts handler)
+        super.emit("state-requested", socket.id);
       });
     });
   }
@@ -59,11 +62,8 @@ export class WebSocketManager {
     this.io.to(socketId).emit("state", state);
   }
 
-  on(event: string, handler: (...args: any[]) => void): void {
-    this.io.on(event, handler);
-  }
-
-  emit(event: string, ...args: any[]): void {
+  // Broadcast to all connected Socket.IO clients
+  broadcast(event: string, ...args: any[]): void {
     this.io.emit(event, ...args);
   }
 }
