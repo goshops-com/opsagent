@@ -1,4 +1,4 @@
-import { getIssues, getIssueStats, updateIssueStatus, discardIssue, type Issue } from "@/lib/db";
+import { getIssues, getIssueStats, getServers, updateIssueStatus, discardIssue } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -10,49 +10,79 @@ async function updateStatus(formData: FormData) {
   "use server";
   const issueId = formData.get("issueId") as string;
   const status = formData.get("status") as string;
-  
+  const currentStatus = formData.get("currentStatus") as string;
+  const server = formData.get("server") as string;
+
   if (issueId && status) {
     await updateIssueStatus(issueId, status);
   }
-  
-  redirect("/issues?refresh=" + Date.now());
+
+  const params = new URLSearchParams();
+  if (currentStatus && currentStatus !== "all") params.set("status", currentStatus);
+  if (server && server !== "all") params.set("server", server);
+  params.set("refresh", Date.now().toString());
+
+  redirect("/issues?" + params.toString());
 }
 
 async function discardIssueAction(formData: FormData) {
   "use server";
   const issueId = formData.get("issueId") as string;
-  
+  const currentStatus = formData.get("currentStatus") as string;
+  const server = formData.get("server") as string;
+
   if (issueId) {
     await discardIssue(issueId);
   }
-  
-  redirect("/issues?refresh=" + Date.now());
+
+  const params = new URLSearchParams();
+  if (currentStatus && currentStatus !== "all") params.set("status", currentStatus);
+  if (server && server !== "all") params.set("server", server);
+  params.set("refresh", Date.now().toString());
+
+  redirect("/issues?" + params.toString());
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    open: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-    investigating: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    resolved: "bg-green-500/20 text-green-400 border-green-500/30",
-    closed: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  const colors: Record<string, { bg: string; color: string }> = {
+    open: { bg: "#f59e0b20", color: "#f59e0b" },
+    investigating: { bg: "#3b82f620", color: "#3b82f6" },
+    resolved: { bg: "#22c55e20", color: "#22c55e" },
+    closed: { bg: "#6b728020", color: "#6b7280" },
   };
-  
+  const style = colors[status] || colors.closed;
+
   return (
-    <span className={`px-2 py-1 rounded text-xs font-medium border ${colors[status] || colors.closed}`}>
+    <span style={{
+      padding: "4px 8px",
+      borderRadius: "4px",
+      fontSize: "12px",
+      fontWeight: 500,
+      background: style.bg,
+      color: style.color,
+    }}>
       {status}
     </span>
   );
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const colors: Record<string, string> = {
-    critical: "bg-red-500/20 text-red-400 border-red-500/30",
-    warning: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-    info: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  const colors: Record<string, { bg: string; color: string }> = {
+    critical: { bg: "#ef444420", color: "#ef4444" },
+    warning: { bg: "#f59e0b20", color: "#f59e0b" },
+    info: { bg: "#3b82f620", color: "#3b82f6" },
   };
-  
+  const style = colors[severity] || colors.info;
+
   return (
-    <span className={`px-2 py-1 rounded text-xs font-medium border ${colors[severity] || colors.info}`}>
+    <span style={{
+      padding: "4px 8px",
+      borderRadius: "4px",
+      fontSize: "12px",
+      fontWeight: 500,
+      background: style.bg,
+      color: style.color,
+    }}>
       {severity}
     </span>
   );
@@ -61,184 +91,228 @@ function SeverityBadge({ severity }: { severity: string }) {
 export default async function IssuesPage({
   searchParams,
 }: {
-  searchParams: { status?: string };
+  searchParams: { status?: string; server?: string };
 }) {
   const status = searchParams.status || "all";
-  const [issues, stats] = await Promise.all([
+  const serverFilter = searchParams.server || "all";
+
+  const [allIssues, stats, servers] = await Promise.all([
     getIssues(status === "all" ? undefined : status, 100),
     getIssueStats(),
+    getServers(),
   ]);
 
+  // Filter by server if needed
+  const issues = serverFilter === "all"
+    ? allIssues
+    : allIssues.filter(i => i.server_id === serverFilter);
+
+  const cardStyle = {
+    background: "#141414",
+    border: "1px solid #2a2a2a",
+    borderRadius: "8px",
+    padding: "16px",
+  };
+
+  const buttonStyle = {
+    padding: "6px 12px",
+    borderRadius: "4px",
+    fontSize: "13px",
+    cursor: "pointer",
+    border: "none",
+    transition: "all 0.2s",
+  };
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#fafafa] p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Issues</h1>
-            <p className="text-[#a0a0a0]">
-              Manage ongoing investigations and track agent actions
-            </p>
-          </div>
-          <Link
-            href="/"
-            className="px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] rounded-lg border border-[#2a2a2a] transition-colors"
-          >
-            ← Back to Dashboard
-          </Link>
+    <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "24px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+        <div>
+          <h1 style={{ fontSize: "28px", fontWeight: 600, marginBottom: "8px" }}>Issues</h1>
+          <p style={{ color: "#a0a0a0" }}>Manage ongoing investigations and track agent actions</p>
         </div>
+        <Link href="/" style={{
+          padding: "8px 16px",
+          background: "#1a1a1a",
+          borderRadius: "6px",
+          color: "#fff",
+          textDecoration: "none",
+          border: "1px solid #2a2a2a",
+        }}>
+          ← Back to Dashboard
+        </Link>
+      </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-5 gap-4">
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <div className="text-2xl font-bold text-yellow-400">{stats.open}</div>
-            <div className="text-xs text-[#a0a0a0] uppercase tracking-wider mt-1">Open</div>
-          </div>
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <div className="text-2xl font-bold text-blue-400">{stats.investigating}</div>
-            <div className="text-xs text-[#a0a0a0] uppercase tracking-wider mt-1">Investigating</div>
-          </div>
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <div className="text-2xl font-bold text-green-400">{stats.resolved}</div>
-            <div className="text-xs text-[#a0a0a0] uppercase tracking-wider mt-1">Resolved</div>
-          </div>
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <div className="text-2xl font-bold text-gray-400">{stats.closed}</div>
-            <div className="text-xs text-[#a0a0a0] uppercase tracking-wider mt-1">Closed</div>
-          </div>
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <div className="text-2xl font-bold text-white">{stats.total}</div>
-            <div className="text-xs text-[#a0a0a0] uppercase tracking-wider mt-1">Total</div>
-          </div>
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", marginBottom: "24px" }}>
+        <div style={cardStyle}>
+          <div style={{ fontSize: "24px", fontWeight: 600, color: "#f59e0b" }}>{stats.open}</div>
+          <div style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Open</div>
         </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: "24px", fontWeight: 600, color: "#3b82f6" }}>{stats.investigating}</div>
+          <div style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Investigating</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: "24px", fontWeight: 600, color: "#22c55e" }}>{stats.resolved}</div>
+          <div style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Resolved</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: "24px", fontWeight: 600, color: "#6b7280" }}>{stats.closed}</div>
+          <div style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Closed</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: "24px", fontWeight: 600, color: "#fff" }}>{stats.total}</div>
+          <div style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Total</div>
+        </div>
+      </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[#a0a0a0]">Filter:</span>
+      {/* Filters */}
+      <div style={{ display: "flex", gap: "24px", marginBottom: "24px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "14px", color: "#a0a0a0" }}>Status:</span>
           {["all", "open", "investigating", "resolved", "closed"].map((s) => (
             <Link
               key={s}
-              href={`/issues?status=${s}`}
-              className={`px-3 py-1 rounded text-sm capitalize transition-colors ${
-                status === s
-                  ? "bg-blue-500 text-white"
-                  : "bg-[#1a1a1a] hover:bg-[#2a2a2a] text-[#a0a0a0]"
-              }`}
+              href={`/issues?status=${s}${serverFilter !== "all" ? `&server=${serverFilter}` : ""}`}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "4px",
+                fontSize: "13px",
+                textDecoration: "none",
+                textTransform: "capitalize",
+                background: status === s ? "#3b82f6" : "#1a1a1a",
+                color: status === s ? "#fff" : "#a0a0a0",
+              }}
             >
               {s}
             </Link>
           ))}
         </div>
 
-        {/* Issues List */}
-        <div className="bg-[#141414] rounded-lg border border-[#2a2a2a] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-[#1a1a1a] border-b border-[#2a2a2a]">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Issue
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Server
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Severity
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Alerts
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Last Seen
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#2a2a2a]">
-                {issues.map((issue) => (
-                  <tr key={issue.id} className="hover:bg-[#1a1a1a]/50">
-                    <td className="px-4 py-4">
-                      <div className="space-y-1">
-                        <Link
-                          href={`/issues/${issue.id}`}
-                          className="font-medium text-blue-400 hover:text-blue-300"
-                        >
-                          {issue.title}
-                        </Link>
-                        <p className="text-sm text-[#a0a0a0] line-clamp-2">
-                          {issue.description}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-[#a0a0a0]">
-                      {issue.hostname || issue.server_id}
-                    </td>
-                    <td className="px-4 py-4">
-                      <SeverityBadge severity={issue.severity} />
-                    </td>
-                    <td className="px-4 py-4">
-                      <StatusBadge status={issue.status} />
-                    </td>
-                    <td className="px-4 py-4 text-sm text-[#a0a0a0]">
-                      <span className="font-medium text-white">{issue.alert_count}</span>
-                      <span className="text-xs ml-1">firings</span>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-[#a0a0a0]">
-                      {new Date(Number(issue.last_seen_at)).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/issues/${issue.id}`}
-                          className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded text-sm hover:bg-blue-500/30 transition-colors"
-                        >
-                          View
-                        </Link>
-                        
-                        {issue.status !== "resolved" && issue.status !== "closed" && (
-                          <form action={updateStatus} className="inline">
-                            <input type="hidden" name="issueId" value={issue.id} />
-                            <input type="hidden" name="status" value="resolved" />
-                            <button
-                              type="submit"
-                              className="px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm hover:bg-green-500/30 transition-colors"
-                            >
-                              Resolve
-                            </button>
-                          </form>
-                        )}
-                        
-                        {issue.status !== "closed" && (
-                          <form action={discardIssueAction} className="inline">
-                            <input type="hidden" name="issueId" value={issue.id} />
-                            <button
-                              type="submit"
-                              className="px-3 py-1 bg-gray-500/20 text-gray-400 rounded text-sm hover:bg-gray-500/30 transition-colors"
-                            >
-                              Discard
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {issues.length === 0 && (
-            <div className="p-8 text-center text-[#a0a0a0]">
-              <p className="text-lg mb-2">No issues found</p>
-              <p className="text-sm">{status === "all" ? "Great! No issues in the system." : `No ${status} issues.`}</p>
-            </div>
-          )}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "14px", color: "#a0a0a0" }}>Server:</span>
+          <Link
+            href={`/issues?status=${status}`}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "4px",
+              fontSize: "13px",
+              textDecoration: "none",
+              background: serverFilter === "all" ? "#3b82f6" : "#1a1a1a",
+              color: serverFilter === "all" ? "#fff" : "#a0a0a0",
+            }}
+          >
+            All
+          </Link>
+          {servers.map((server) => (
+            <Link
+              key={server.id}
+              href={`/issues?status=${status}&server=${server.id}`}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "4px",
+                fontSize: "13px",
+                textDecoration: "none",
+                background: serverFilter === server.id ? "#3b82f6" : "#1a1a1a",
+                color: serverFilter === server.id ? "#fff" : "#a0a0a0",
+              }}
+            >
+              {server.name || server.hostname}
+            </Link>
+          ))}
         </div>
+      </div>
+
+      {/* Issues List */}
+      <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "#1a1a1a", borderBottom: "1px solid #2a2a2a" }}>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Issue</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Server</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Severity</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Status</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Alerts</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Last Seen</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {issues.map((issue) => (
+              <tr key={issue.id} style={{ borderBottom: "1px solid #2a2a2a" }}>
+                <td style={{ padding: "16px" }}>
+                  <Link href={`/issues/${issue.id}`} style={{ color: "#3b82f6", textDecoration: "none", fontWeight: 500 }}>
+                    {issue.title}
+                  </Link>
+                  {issue.description && (
+                    <p style={{ fontSize: "13px", color: "#a0a0a0", marginTop: "4px" }}>
+                      {issue.description.slice(0, 100)}...
+                    </p>
+                  )}
+                </td>
+                <td style={{ padding: "16px", fontSize: "13px", color: "#a0a0a0" }}>
+                  {issue.hostname || issue.server_id}
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <SeverityBadge severity={issue.severity} />
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <StatusBadge status={issue.status} />
+                </td>
+                <td style={{ padding: "16px", fontSize: "13px" }}>
+                  <span style={{ fontWeight: 500 }}>{issue.alert_count}</span>
+                  <span style={{ color: "#a0a0a0", marginLeft: "4px" }}>firings</span>
+                </td>
+                <td style={{ padding: "16px", fontSize: "13px", color: "#a0a0a0" }}>
+                  {new Date(Number(issue.last_seen_at)).toLocaleString()}
+                </td>
+                <td style={{ padding: "16px" }}>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <Link
+                      href={`/issues/${issue.id}`}
+                      style={{ ...buttonStyle, background: "#3b82f620", color: "#3b82f6" }}
+                    >
+                      View
+                    </Link>
+
+                    {issue.status !== "resolved" && issue.status !== "closed" && (
+                      <form action={updateStatus} style={{ display: "inline" }}>
+                        <input type="hidden" name="issueId" value={issue.id} />
+                        <input type="hidden" name="status" value="resolved" />
+                        <input type="hidden" name="currentStatus" value={status} />
+                        <input type="hidden" name="server" value={serverFilter} />
+                        <button type="submit" style={{ ...buttonStyle, background: "#22c55e20", color: "#22c55e" }}>
+                          Resolve
+                        </button>
+                      </form>
+                    )}
+
+                    {issue.status !== "closed" && (
+                      <form action={discardIssueAction} style={{ display: "inline" }}>
+                        <input type="hidden" name="issueId" value={issue.id} />
+                        <input type="hidden" name="currentStatus" value={status} />
+                        <input type="hidden" name="server" value={serverFilter} />
+                        <button type="submit" style={{ ...buttonStyle, background: "#6b728020", color: "#6b7280" }}>
+                          Discard
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {issues.length === 0 && (
+          <div style={{ padding: "48px", textAlign: "center", color: "#a0a0a0" }}>
+            <p style={{ fontSize: "18px", marginBottom: "8px" }}>No issues found</p>
+            <p style={{ fontSize: "14px" }}>
+              {status === "all" ? "Great! No issues in the system." : `No ${status} issues.`}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

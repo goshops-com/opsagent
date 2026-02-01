@@ -10,20 +10,48 @@ function formatDate(timestamp: number | string) {
   return new Date(ts).toLocaleString();
 }
 
+function parseAnalysis(analysis: string): string {
+  if (!analysis) return "";
+
+  // Try to parse as JSON and extract the analysis field
+  try {
+    // Check if it starts with JSON-like content
+    const trimmed = analysis.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("```json")) {
+      // Remove markdown code fence if present
+      let jsonStr = trimmed;
+      if (jsonStr.startsWith("```json")) {
+        jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/```\s*$/, "");
+      }
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.analysis) {
+        return parsed.analysis;
+      }
+    }
+  } catch {
+    // Not valid JSON, return as-is
+  }
+
+  // Return original if not JSON or parsing failed
+  return analysis.slice(0, 500) + (analysis.length > 500 ? "..." : "");
+}
+
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     active: "background: #22c55e20; color: #22c55e;",
+    offline: "background: #6b728020; color: #6b7280;",
     resolved: "background: #3b82f620; color: #3b82f6;",
     critical: "background: #ef444420; color: #ef4444;",
     warning: "background: #f59e0b20; color: #f59e0b;",
     pending: "background: #f59e0b20; color: #f59e0b;",
     executed: "background: #22c55e20; color: #22c55e;",
     skipped: "background: #a0a0a020; color: #a0a0a0;",
+    failed: "background: #ef444420; color: #ef4444;",
   };
   return (
-    <span style={{ 
-      padding: "2px 8px", 
-      borderRadius: "4px", 
+    <span style={{
+      padding: "2px 8px",
+      borderRadius: "4px",
       fontSize: "12px",
       fontWeight: 500,
       ...Object.fromEntries(
@@ -35,14 +63,33 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default async function Dashboard() {
-  const [servers, alerts, responses, actions, stats] = await Promise.all([
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: { server?: string };
+}) {
+  const serverFilter = searchParams.server || "all";
+
+  const [servers, allAlerts, allResponses, allActions, stats] = await Promise.all([
     getServers(),
-    getAlerts(20),
-    getAgentResponses(20),
-    getAgentActions(20),
+    getAlerts(50),
+    getAgentResponses(50),
+    getAgentActions(50),
     getStats(),
   ]);
+
+  // Filter by server if needed
+  const alerts = serverFilter === "all"
+    ? allAlerts.slice(0, 20)
+    : allAlerts.filter(a => a.server_id === serverFilter).slice(0, 20);
+
+  const responses = serverFilter === "all"
+    ? allResponses.slice(0, 20)
+    : allResponses.filter(r => r.server_id === serverFilter).slice(0, 20);
+
+  const actions = serverFilter === "all"
+    ? allActions.slice(0, 20)
+    : allActions.filter(a => a.server_id === serverFilter).slice(0, 20);
 
   const cardStyle = {
     background: "#141414",
@@ -68,7 +115,7 @@ export default async function Dashboard() {
       </header>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "32px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         <div style={statCardStyle}>
           <Server size={32} color="#3b82f6" />
           <div>
@@ -101,6 +148,40 @@ export default async function Dashboard() {
         </Link>
       </div>
 
+      {/* Server Filter */}
+      <div style={{ marginBottom: "24px", display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "14px", color: "#a0a0a0" }}>Filter by server:</span>
+        <Link
+          href="/"
+          style={{
+            padding: "6px 12px",
+            borderRadius: "4px",
+            fontSize: "13px",
+            textDecoration: "none",
+            background: serverFilter === "all" ? "#3b82f6" : "#1a1a1a",
+            color: serverFilter === "all" ? "#fff" : "#a0a0a0",
+          }}
+        >
+          All Servers
+        </Link>
+        {servers.map((server) => (
+          <Link
+            key={server.id}
+            href={`/?server=${server.id}`}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "4px",
+              fontSize: "13px",
+              textDecoration: "none",
+              background: serverFilter === server.id ? "#3b82f6" : "#1a1a1a",
+              color: serverFilter === server.id ? "#fff" : "#a0a0a0",
+            }}
+          >
+            {server.name || server.hostname}
+          </Link>
+        ))}
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
         {/* Servers */}
         <div style={cardStyle}>
@@ -118,7 +199,7 @@ export default async function Dashboard() {
                     <StatusBadge status={server.status} />
                   </div>
                   <div style={{ fontSize: "12px", color: "#a0a0a0", marginTop: "4px" }}>
-                    {server.hostname} | Last seen: {formatDate(server.last_seen_at)}
+                    {server.hostname} | {server.ip_address} | Last seen: {formatDate(server.last_seen_at)}
                   </div>
                 </div>
               ))
@@ -162,7 +243,9 @@ export default async function Dashboard() {
             ) : (
               responses.map((response) => (
                 <div key={response.id} style={{ padding: "12px", background: "#1a1a1a", borderRadius: "6px" }}>
-                  <div style={{ fontSize: "13px", marginBottom: "8px" }}>{response.analysis}</div>
+                  <div style={{ fontSize: "13px", marginBottom: "8px", lineHeight: 1.5 }}>
+                    {parseAnalysis(response.analysis)}
+                  </div>
                   <div style={{ fontSize: "12px", color: "#a0a0a0" }}>
                     {response.hostname} | {response.model} | {formatDate(response.created_at)}
                   </div>
@@ -190,7 +273,7 @@ export default async function Dashboard() {
                   <div style={{ fontSize: "13px", marginTop: "4px" }}>{action.description}</div>
                   {action.output && (
                     <div style={{ fontSize: "12px", color: "#22c55e", marginTop: "4px" }}>
-                      Result: {action.output}
+                      Result: {action.output.slice(0, 200)}{action.output.length > 200 ? "..." : ""}
                     </div>
                   )}
                   <div style={{ fontSize: "12px", color: "#a0a0a0", marginTop: "4px" }}>
