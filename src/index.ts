@@ -6,30 +6,28 @@ import { AlertManager } from "./alerts/manager.js";
 import { AIAgentInterface } from "./agent/interface.js";
 import { DashboardServer } from "./dashboard/server.js";
 import { DiscordNotifier } from "./notifications/discord.js";
-import { Database } from "./db/client.js";
+import { createBackend, type Backend } from "./api/backend.js";
 import type { SystemMetrics } from "./collector/metrics.js";
 
 async function main() {
-  console.log("System Monitor starting...\n");
+  console.log("OpsAgent starting...\n");
 
   // Load configuration
   const config = loadConfig();
   console.log("Configuration loaded");
 
-  // Initialize database
-  let db: Database | null = null;
-  if (process.env.TURSO_DATABASE_URL) {
-    try {
-      db = new Database();
-      await db.initialize();
-      console.log(`Server registered: ${db.getServerInfo().hostname} (${db.getServerId()})`);
-    } catch (error) {
-      console.error("[Database] Failed to initialize:", error);
-      console.log("[Database] Continuing without database persistence");
-      db = null;
+  // Initialize backend (Control Panel API or Direct Database)
+  let backend: Backend | null = null;
+  try {
+    backend = await createBackend();
+    if (backend) {
+      const info = backend.getServerInfo();
+      console.log(`Agent registered: ${info.hostname} (${backend.getServerId()})`);
     }
-  } else {
-    console.log("[Database] No TURSO_DATABASE_URL configured, running without persistence");
+  } catch (error) {
+    console.error("[Backend] Failed to initialize:", error);
+    console.log("[Backend] Continuing in standalone mode");
+    backend = null;
   }
 
   // Initialize components
@@ -71,8 +69,8 @@ async function main() {
       getAgentResults: () => agent.getResults(),
       acknowledgeAlert: (id) => {
         const success = alertManager.acknowledgeAlert(id);
-        if (success && db) {
-          db.acknowledgeAlert(id).catch((e) => console.error("[Database] Failed to acknowledge alert:", e));
+        if (success && backend) {
+          backend.acknowledgeAlert(id).catch((e) => console.error("[Backend] Failed to acknowledge alert:", e));
         }
         return success;
       },
@@ -85,9 +83,9 @@ async function main() {
 
   // Heartbeat interval for database
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  if (db) {
+  if (backend) {
     heartbeatInterval = setInterval(() => {
-      db!.heartbeat().catch((e) => console.error("[Database] Heartbeat failed:", e));
+      backend!.heartbeat().catch((e) => console.error("[Backend] Heartbeat failed:", e));
     }, 60000); // Every minute
   }
 
@@ -102,9 +100,9 @@ async function main() {
     }
 
     // Save metrics snapshot every 10 collections (~30s with test config, ~50s with default)
-    if (db && metricsCount % 10 === 0) {
-      db.saveMetricsSnapshot(metrics).catch((e) =>
-        console.error("[Database] Failed to save metrics snapshot:", e)
+    if (backend && metricsCount % 10 === 0) {
+      backend.saveMetricsSnapshot(metrics).catch((e) =>
+        console.error("[Backend] Failed to save metrics snapshot:", e)
       );
     }
 
@@ -121,8 +119,8 @@ async function main() {
       );
 
       // Save alert to database
-      if (db) {
-        db.saveAlert(alert).catch((e) => console.error("[Database] Failed to save alert:", e));
+      if (backend) {
+        backend.saveAlert(alert).catch((e) => console.error("[Backend] Failed to save alert:", e));
       }
 
       // Send critical alerts to Discord immediately
@@ -147,9 +145,9 @@ async function main() {
         );
 
         // Save agent response to database
-        if (db) {
-          db.saveAgentResponse(alert, result, config.agent.model).catch((e) =>
-            console.error("[Database] Failed to save agent response:", e)
+        if (backend) {
+          backend.saveAgentResponse(alert, result, config.agent.model).catch((e) =>
+            console.error("[Backend] Failed to save agent response:", e)
           );
         }
 
@@ -203,9 +201,9 @@ async function main() {
       console.log(`[Alert] Resolved: ${event.alert.message}`);
 
       // Update alert in database
-      if (db) {
-        db.resolveAlert(event.alert.id).catch((e) =>
-          console.error("[Database] Failed to resolve alert:", e)
+      if (backend) {
+        backend.resolveAlert(event.alert.id).catch((e) =>
+          console.error("[Backend] Failed to resolve alert:", e)
         );
       }
 
@@ -235,8 +233,8 @@ async function main() {
   // Start collecting metrics
   collector.start();
 
-  const serverInfo = db ? ` [${db.getServerInfo().hostname}]` : "";
-  console.log(`\nSystem Monitor${serverInfo} running. Press Ctrl+C to stop.\n`);
+  const serverInfo = backend ? ` [${backend.getServerInfo().hostname}]` : "";
+  console.log(`\nOpsAgent${serverInfo} running. Press Ctrl+C to stop.\n`);
 
   // Graceful shutdown
   const shutdown = async () => {
@@ -252,9 +250,9 @@ async function main() {
       await dashboard.stop();
     }
 
-    if (db) {
-      await db.close();
-      console.log("[Database] Connection closed");
+    if (backend) {
+      await backend.close();
+      console.log("[Backend] Connection closed");
     }
 
     process.exit(0);

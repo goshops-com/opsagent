@@ -246,6 +246,42 @@ WRAPPER
 }
 
 # =============================================================================
+# Installation Mode Selection
+# =============================================================================
+
+INSTALL_MODE="${OPSAGENT_MODE:-}"  # agent, panel, both
+
+select_install_mode() {
+    # Skip if mode already set via environment
+    if [[ -n "$INSTALL_MODE" ]]; then
+        return 0
+    fi
+
+    # Skip if non-interactive
+    if [[ ! -t 0 ]]; then
+        INSTALL_MODE="agent"
+        return 0
+    fi
+
+    step "Select installation mode"
+    echo ""
+    echo -e "  ${BOLD}1)${NC} Agent only      ${DIM}- Monitor this server, report to a control panel${NC}"
+    echo -e "  ${BOLD}2)${NC} Control Panel   ${DIM}- Central dashboard to view all agents${NC}"
+    echo -e "  ${BOLD}3)${NC} Both            ${DIM}- Full installation (agent + control panel)${NC}"
+    echo ""
+    read -p "  Select mode [1-3] (default: 1): " mode_choice
+
+    case "${mode_choice:-1}" in
+        1) INSTALL_MODE="agent";;
+        2) INSTALL_MODE="panel";;
+        3) INSTALL_MODE="both";;
+        *) INSTALL_MODE="agent";;
+    esac
+
+    success "Installation mode: $INSTALL_MODE"
+}
+
+# =============================================================================
 # Configuration
 # =============================================================================
 
@@ -268,31 +304,63 @@ setup_config() {
         info "Let's configure OpsAgent (press Enter to skip optional fields)"
         echo ""
 
-        # OpenCode API Key
-        echo -e "${BOLD}OpenCode API Key${NC} ${DIM}(required for AI analysis)${NC}"
-        echo -e "${DIM}Get yours at: https://opencode.ai${NC}"
-        read -p "  API Key: " opencode_key
-        if [[ -n "$opencode_key" ]]; then
-            sed_inplace "s|OPENCODE_API_KEY=.*|OPENCODE_API_KEY=${opencode_key}|" "$env_file"
-        fi
-
-        echo ""
-
-        # Turso Database
-        echo -e "${BOLD}Turso Database${NC} ${DIM}(optional, for multi-server support)${NC}"
-        echo -e "${DIM}Create a database at: https://turso.tech${NC}"
-        read -p "  Database URL: " turso_url
-        if [[ -n "$turso_url" ]]; then
-            sed_inplace "s|TURSO_DATABASE_URL=.*|TURSO_DATABASE_URL=${turso_url}|" "$env_file"
-            read -p "  Auth Token: " turso_token
-            if [[ -n "$turso_token" ]]; then
-                sed_inplace "s|TURSO_AUTH_TOKEN=.*|TURSO_AUTH_TOKEN=${turso_token}|" "$env_file"
+        # For agent or both: ask for OpenCode API Key
+        if [[ "$INSTALL_MODE" == "agent" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+            echo -e "${BOLD}OpenCode API Key${NC} ${DIM}(required for AI analysis)${NC}"
+            echo -e "${DIM}Get yours at: https://opencode.ai${NC}"
+            read -p "  API Key: " opencode_key
+            if [[ -n "$opencode_key" ]]; then
+                sed_inplace "s|OPENCODE_API_KEY=.*|OPENCODE_API_KEY=${opencode_key}|" "$env_file"
             fi
+            echo ""
         fi
 
-        echo ""
+        # For agent mode: ask for Control Panel URL
+        if [[ "$INSTALL_MODE" == "agent" ]]; then
+            echo -e "${BOLD}Control Panel URL${NC} ${DIM}(optional, to connect to a central dashboard)${NC}"
+            echo -e "${DIM}Example: http://your-server:3002${NC}"
+            read -p "  Control Panel URL: " panel_url
+            if [[ -n "$panel_url" ]]; then
+                # Enable Control Panel URL and comment out Turso
+                sed_inplace "s|# CONTROL_PANEL_URL=.*|CONTROL_PANEL_URL=${panel_url}|" "$env_file"
+                sed_inplace "s|^TURSO_DATABASE_URL=|# TURSO_DATABASE_URL=|" "$env_file"
+                sed_inplace "s|^TURSO_AUTH_TOKEN=|# TURSO_AUTH_TOKEN=|" "$env_file"
+                success "Agent will connect to control panel at ${panel_url}"
+            else
+                echo ""
+                # If no control panel, ask for Turso for direct DB mode
+                echo -e "${BOLD}Turso Database${NC} ${DIM}(optional, for standalone multi-server support)${NC}"
+                echo -e "${DIM}Create a database at: https://turso.tech${NC}"
+                read -p "  Database URL: " turso_url
+                if [[ -n "$turso_url" ]]; then
+                    sed_inplace "s|TURSO_DATABASE_URL=.*|TURSO_DATABASE_URL=${turso_url}|" "$env_file"
+                    read -p "  Auth Token: " turso_token
+                    if [[ -n "$turso_token" ]]; then
+                        sed_inplace "s|TURSO_AUTH_TOKEN=.*|TURSO_AUTH_TOKEN=${turso_token}|" "$env_file"
+                    fi
+                fi
+            fi
+            echo ""
+        fi
 
-        # Discord Webhook
+        # For panel or both: ask for Turso (required)
+        if [[ "$INSTALL_MODE" == "panel" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+            echo -e "${BOLD}Turso Database${NC} ${DIM}(required for control panel)${NC}"
+            echo -e "${DIM}Create a database at: https://turso.tech${NC}"
+            read -p "  Database URL: " turso_url
+            if [[ -n "$turso_url" ]]; then
+                sed_inplace "s|TURSO_DATABASE_URL=.*|TURSO_DATABASE_URL=${turso_url}|" "$env_file"
+                read -p "  Auth Token: " turso_token
+                if [[ -n "$turso_token" ]]; then
+                    sed_inplace "s|TURSO_AUTH_TOKEN=.*|TURSO_AUTH_TOKEN=${turso_token}|" "$env_file"
+                fi
+            else
+                warn "Turso database is required for control panel"
+            fi
+            echo ""
+        fi
+
+        # Discord Webhook (optional for all modes)
         echo -e "${BOLD}Discord Webhook${NC} ${DIM}(optional, for notifications)${NC}"
         read -p "  Webhook URL: " discord_url
         if [[ -n "$discord_url" ]]; then
@@ -353,23 +421,46 @@ print_success() {
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "${BOLD}Installation directory:${NC} $INSTALL_DIR"
+    echo -e "${BOLD}Installation mode:${NC} $INSTALL_MODE"
     echo ""
-    echo -e "${BOLD}Quick start:${NC}"
-    echo ""
-    echo -e "  ${CYAN}# Start the monitoring daemon${NC}"
-    echo -e "  opsagent start"
-    echo ""
-    echo -e "  ${CYAN}# Check status${NC}"
-    echo -e "  opsagent status"
-    echo ""
-    echo -e "  ${CYAN}# View logs${NC}"
-    echo -e "  opsagent logs"
-    echo ""
-    echo -e "  ${CYAN}# Open the dashboard${NC}"
-    echo -e "  open http://localhost:3001"
-    echo ""
+
+    if [[ "$INSTALL_MODE" == "agent" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+        echo -e "${BOLD}Agent commands:${NC}"
+        echo ""
+        echo -e "  ${CYAN}# Start the monitoring agent${NC}"
+        echo -e "  opsagent start"
+        echo ""
+        echo -e "  ${CYAN}# Check status${NC}"
+        echo -e "  opsagent status"
+        echo ""
+        echo -e "  ${CYAN}# View logs${NC}"
+        echo -e "  opsagent logs"
+        echo ""
+        echo -e "  ${CYAN}# Agent dashboard${NC}"
+        echo -e "  open http://localhost:3001"
+        echo ""
+    fi
+
+    if [[ "$INSTALL_MODE" == "panel" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+        echo -e "${BOLD}Control Panel commands:${NC}"
+        echo ""
+        echo -e "  ${CYAN}# Start the control panel${NC}"
+        echo -e "  cd $INSTALL_DIR && bun run panel"
+        echo ""
+        echo -e "  ${CYAN}# Control panel URL${NC}"
+        echo -e "  open http://localhost:3002"
+        echo ""
+        if [[ "$INSTALL_MODE" == "panel" ]]; then
+            echo -e "${BOLD}Connect agents:${NC}"
+            echo -e "  ${DIM}On each server you want to monitor, install the agent:${NC}"
+            echo -e "  OPSAGENT_MODE=agent curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash"
+            echo -e "  ${DIM}Then set CONTROL_PANEL_URL=http://$(hostname):3002 in the agent's .env${NC}"
+            echo ""
+        fi
+    fi
+
     echo -e "${BOLD}Configuration:${NC}"
-    echo -e "  ${DIM}Edit $INSTALL_DIR/.env to update API keys${NC}"
+    echo -e "  ${DIM}Edit $INSTALL_DIR/.env to update settings${NC}"
     echo ""
     echo -e "${BOLD}Documentation:${NC}"
     echo -e "  ${DIM}https://github.com/sjcotto/opsagent#readme${NC}"
@@ -399,6 +490,7 @@ main() {
     detect_os
     info "Detected: $OS ($ARCH)"
 
+    select_install_mode
     check_requirements
     install_bun
     install_pm2
@@ -408,15 +500,27 @@ main() {
 
     print_success
 
-    # Optionally start the daemon
+    # Optionally start based on mode
     if [[ -z "${OPSAGENT_NO_START:-}" ]] && [[ -t 0 ]]; then
         echo ""
-        read -p "Start OpsAgent now? [Y/n] " start_now
-        if [[ -z "$start_now" ]] || [[ "$start_now" =~ ^[Yy] ]]; then
-            echo ""
-            cd "$INSTALL_DIR"
-            export PATH="$INSTALL_DIR/bin:$HOME/.bun/bin:$PATH"
-            ./bin/opsagent.sh start
+        if [[ "$INSTALL_MODE" == "agent" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+            read -p "Start OpsAgent agent now? [Y/n] " start_now
+            if [[ -z "$start_now" ]] || [[ "$start_now" =~ ^[Yy] ]]; then
+                echo ""
+                cd "$INSTALL_DIR"
+                export PATH="$INSTALL_DIR/bin:$HOME/.bun/bin:$PATH"
+                ./bin/opsagent.sh start
+            fi
+        fi
+        if [[ "$INSTALL_MODE" == "panel" ]]; then
+            read -p "Start Control Panel now? [Y/n] " start_panel
+            if [[ -z "$start_panel" ]] || [[ "$start_panel" =~ ^[Yy] ]]; then
+                echo ""
+                cd "$INSTALL_DIR"
+                export PATH="$HOME/.bun/bin:$PATH"
+                info "Starting control panel on http://localhost:3002..."
+                bun run panel
+            fi
         fi
     fi
 }
