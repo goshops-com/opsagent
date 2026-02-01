@@ -1,0 +1,50 @@
+# Dockerfile for testing OpsAgent installation script
+# Usage:
+#   docker build -f Dockerfile.install-test -t opsagent-install-test .
+#   docker run -it --rm opsagent-install-test
+
+FROM ubuntu:22.04
+
+# Install minimal requirements
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    unzip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for testing
+RUN useradd -m -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Copy the entire project (for local testing without git clone)
+COPY --chown=testuser:testuser . /home/testuser/.opsagent-local/
+
+# Copy install script
+COPY --chown=testuser:testuser install.sh /tmp/install.sh
+RUN chmod +x /tmp/install.sh
+
+# Set environment for non-interactive install
+ENV OPSAGENT_NO_START=1
+ENV TERM=xterm-256color
+
+# Create a modified install script that uses local files instead of git clone
+RUN echo '#!/bin/bash' > /tmp/install-local.sh && \
+    echo 'export OPSAGENT_DIR="$HOME/.opsagent"' >> /tmp/install-local.sh && \
+    echo 'cp -r "$HOME/.opsagent-local" "$OPSAGENT_DIR"' >> /tmp/install-local.sh && \
+    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> /tmp/install-local.sh && \
+    echo 'curl -fsSL https://bun.sh/install | bash' >> /tmp/install-local.sh && \
+    echo 'source "$HOME/.bashrc"' >> /tmp/install-local.sh && \
+    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> /tmp/install-local.sh && \
+    echo 'bun install -g pm2' >> /tmp/install-local.sh && \
+    echo 'cd "$OPSAGENT_DIR" && bun install' >> /tmp/install-local.sh && \
+    echo 'chmod +x "$OPSAGENT_DIR/bin/"*.sh' >> /tmp/install-local.sh && \
+    echo 'chmod +x "$OPSAGENT_DIR/bin/opsagent" 2>/dev/null || true' >> /tmp/install-local.sh && \
+    echo 'cp "$OPSAGENT_DIR/.env.example" "$OPSAGENT_DIR/.env"' >> /tmp/install-local.sh && \
+    echo 'mkdir -p "$OPSAGENT_DIR/logs"' >> /tmp/install-local.sh && \
+    echo 'echo "Installation complete!"' >> /tmp/install-local.sh && \
+    chmod +x /tmp/install-local.sh
+
+# Default command: run the local installer
+CMD ["/bin/bash", "-c", "/tmp/install-local.sh && export PATH=\"$HOME/.opsagent/bin:$HOME/.bun/bin:$PATH\" && opsagent help"]

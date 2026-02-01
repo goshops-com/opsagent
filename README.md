@@ -61,21 +61,38 @@ An intelligent system monitoring daemon that detects problems using deterministi
 
 ## Quick Start
 
-### Prerequisites
+### One-Line Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+```
+
+This will:
+- Install [Bun](https://bun.sh) runtime (if not present)
+- Install PM2 process manager
+- Clone OpsAgent to `~/.opsagent`
+- Install all dependencies
+- Guide you through configuration
+
+### Manual Installation
+
+<details>
+<summary>Click to expand manual installation steps</summary>
+
+#### Prerequisites
 
 - [Bun](https://bun.sh) runtime (no Node.js required!)
 - PM2 (for daemon mode): `bun install -g pm2`
 - OpenCode API key (for AI agent)
 - Turso database (for multi-server storage)
 
-### Install Bun
+#### Install Bun
 
 ```bash
-# One-liner installation
 curl -fsSL https://bun.sh/install | bash
 ```
 
-### Installation
+#### Clone and Install
 
 ```bash
 # Clone the repository
@@ -89,6 +106,8 @@ cd opsagent
 cp .env.example .env
 nano .env  # Add your API keys
 ```
+
+</details>
 
 ### Configuration
 
@@ -377,6 +396,39 @@ View logs:
 
 # With systemd
 sudo journalctl -u opsagent -f
+```
+
+## Installation Options
+
+The installer supports environment variables for customization:
+
+```bash
+# Install to custom directory
+OPSAGENT_DIR=/opt/opsagent curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+
+# Install without starting the daemon
+OPSAGENT_NO_START=1 curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+
+# Install from a specific branch
+OPSAGENT_BRANCH=dev curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash
+```
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/uninstall.sh | bash
+```
+
+Or manually:
+```bash
+# Stop the daemon
+opsagent stop
+
+# Remove installation
+rm -rf ~/.opsagent
+
+# Remove from shell config (optional)
+# Edit ~/.bashrc or ~/.zshrc and remove the OpsAgent lines
 ```
 
 ## License

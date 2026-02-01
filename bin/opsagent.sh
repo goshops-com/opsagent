@@ -8,17 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
 APP_NAME="opsagent"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Colors (using $'...' syntax for portability)
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+BLUE=$'\033[0;34m'
+NC=$'\033[0m' # No Color
 
 # Check if Bun is installed
 check_bun() {
     if ! command -v bun &> /dev/null; then
-        echo -e "${RED}Bun is not installed.${NC}"
+        echo "${RED}Bun is not installed.${NC}"
         echo "Install it with: curl -fsSL https://bun.sh/install | bash"
         exit 1
     fi
@@ -27,7 +27,7 @@ check_bun() {
 # Check if PM2 is installed
 check_pm2() {
     if ! command -v pm2 &> /dev/null; then
-        echo -e "${RED}PM2 is not installed.${NC}"
+        echo "${RED}PM2 is not installed.${NC}"
         echo "Install it with: bun install -g pm2"
         exit 1
     fi
@@ -52,15 +52,15 @@ start() {
 
     # Check if already running
     if pm2 describe "$APP_NAME" &> /dev/null; then
-        echo -e "${YELLOW}OpsAgent is already running. Use 'restart' to restart.${NC}"
+        echo "${YELLOW}OpsAgent is already running. Use 'restart' to restart.${NC}"
         pm2 status "$APP_NAME"
         exit 0
     fi
 
-    echo -e "${YELLOW}Starting OpsAgent daemon...${NC}"
+    echo "${YELLOW}Starting OpsAgent daemon...${NC}"
     pm2 start ecosystem.config.cjs
     pm2 save
-    echo -e "${GREEN}OpsAgent started.${NC}"
+    echo "${GREEN}OpsAgent started.${NC}"
     pm2 status "$APP_NAME"
 }
 
@@ -71,7 +71,7 @@ start_netdata() {
     
     # Check if NetData is installed
     if ! check_netdata; then
-        echo -e "${RED}NetData is not installed.${NC}"
+        echo "${RED}NetData is not installed.${NC}"
         echo "Run '$0 netdata-install' to install NetData first."
         exit 1
     fi
@@ -83,18 +83,18 @@ start_netdata() {
 
     # Check if already running
     if pm2 describe "$APP_NAME" &> /dev/null; then
-        echo -e "${YELLOW}OpsAgent is already running. Use 'restart' to restart.${NC}"
+        echo "${YELLOW}OpsAgent is already running. Use 'restart' to restart.${NC}"
         pm2 status "$APP_NAME"
         exit 0
     fi
 
-    echo -e "${BLUE}Starting OpsAgent with NetData integration...${NC}"
+    echo "${BLUE}Starting OpsAgent with NetData integration...${NC}"
     pm2 start ecosystem.config.cjs --name "$APP_NAME" -- ./src/index-netdata.ts
     pm2 save
-    echo -e "${GREEN}OpsAgent with NetData started.${NC}"
+    echo "${GREEN}OpsAgent with NetData started.${NC}"
     echo ""
-    echo -e "${BLUE}NetData Dashboard:${NC} http://localhost:19999"
-    echo -e "${BLUE}OpsAgent Dashboard:${NC} http://localhost:3001"
+    echo "${BLUE}NetData Dashboard:${NC} http://localhost:19999"
+    echo "${BLUE}OpsAgent Dashboard:${NC} http://localhost:3001"
     pm2 status "$APP_NAME"
 }
 
@@ -104,15 +104,15 @@ stop() {
     cd "$APP_DIR"
 
     if ! pm2 describe "$APP_NAME" &> /dev/null; then
-        echo -e "${YELLOW}OpsAgent is not running.${NC}"
+        echo "${YELLOW}OpsAgent is not running.${NC}"
         exit 0
     fi
 
-    echo -e "${YELLOW}Stopping OpsAgent...${NC}"
+    echo "${YELLOW}Stopping OpsAgent...${NC}"
     pm2 stop "$APP_NAME"
     pm2 delete "$APP_NAME"
     pm2 save
-    echo -e "${GREEN}OpsAgent stopped.${NC}"
+    echo "${GREEN}OpsAgent stopped.${NC}"
 }
 
 # Restart the daemon
@@ -122,29 +122,29 @@ restart() {
     cd "$APP_DIR"
 
     if ! pm2 describe "$APP_NAME" &> /dev/null; then
-        echo -e "${YELLOW}OpsAgent is not running. Starting...${NC}"
+        echo "${YELLOW}OpsAgent is not running. Starting...${NC}"
         start
         exit 0
     fi
 
-    echo -e "${YELLOW}Restarting OpsAgent...${NC}"
+    echo "${YELLOW}Restarting OpsAgent...${NC}"
     pm2 restart "$APP_NAME"
-    echo -e "${GREEN}OpsAgent restarted.${NC}"
+    echo "${GREEN}OpsAgent restarted.${NC}"
     pm2 status "$APP_NAME"
 }
 
 # Show status
 status() {
     check_pm2
-    pm2 status "$APP_NAME" 2>/dev/null || echo -e "${YELLOW}OpsAgent is not running.${NC}"
+    pm2 status "$APP_NAME" 2>/dev/null || echo "${YELLOW}OpsAgent is not running.${NC}"
     
     # Also show NetData status if installed
     if check_netdata; then
         echo ""
         if curl -fs http://localhost:19999/api/v1/info &> /dev/null; then
-            echo -e "${GREEN}NetData is running${NC} on http://localhost:19999"
+            echo "${GREEN}NetData is running${NC} on http://localhost:19999"
         else
-            echo -e "${YELLOW}NetData is installed but not responding${NC}"
+            echo "${YELLOW}NetData is installed but not responding${NC}"
         fi
     fi
 }
@@ -164,21 +164,21 @@ logs_live() {
 # Setup PM2 to start on boot
 setup_startup() {
     check_pm2
-    echo -e "${YELLOW}Setting up PM2 startup script...${NC}"
+    echo "${YELLOW}Setting up PM2 startup script...${NC}"
     pm2 startup
-    echo -e "${GREEN}Follow the instructions above to enable startup on boot.${NC}"
+    echo "${GREEN}Follow the instructions above to enable startup on boot.${NC}"
 }
 
 # Install dependencies
 install_deps() {
     check_bun
     cd "$APP_DIR"
-    echo -e "${YELLOW}Installing dependencies with Bun...${NC}"
+    echo "${YELLOW}Installing dependencies with Bun...${NC}"
     bun install
-    echo -e "${GREEN}Dependencies installed.${NC}"
+    echo "${GREEN}Dependencies installed.${NC}"
 
     echo ""
-    echo -e "${GREEN}Installation complete!${NC}"
+    echo "${GREEN}Installation complete!${NC}"
     echo ""
     echo "Next steps:"
     echo "  1. Copy .env.example to .env and configure your credentials"
@@ -191,7 +191,7 @@ install_deps() {
 run() {
     check_bun
     cd "$APP_DIR"
-    echo -e "${YELLOW}Running OpsAgent in foreground...${NC}"
+    echo "${YELLOW}Running OpsAgent in foreground...${NC}"
     bun run src/index.ts
 }
 
@@ -202,12 +202,12 @@ run_netdata() {
     
     # Check if NetData is installed
     if ! check_netdata; then
-        echo -e "${RED}NetData is not installed.${NC}"
+        echo "${RED}NetData is not installed.${NC}"
         echo "Run '$0 netdata-install' to install NetData first."
         exit 1
     fi
     
-    echo -e "${BLUE}Running OpsAgent with NetData integration in foreground...${NC}"
+    echo "${BLUE}Running OpsAgent with NetData integration in foreground...${NC}"
     bun run src/index-netdata.ts
 }
 
@@ -215,10 +215,10 @@ run_netdata() {
 
 # Install NetData
 netdata_install() {
-    echo -e "${BLUE}Installing NetData for OpsAgent...${NC}"
+    echo "${BLUE}Installing NetData for OpsAgent...${NC}"
     
     if check_netdata; then
-        echo -e "${GREEN}NetData is already installed.${NC}"
+        echo "${GREEN}NetData is already installed.${NC}"
     fi
     
     cd "$APP_DIR"
@@ -228,15 +228,15 @@ netdata_install() {
 # Check NetData status
 netdata_status() {
     if ! check_netdata; then
-        echo -e "${RED}NetData is not installed.${NC}"
+        echo "${RED}NetData is not installed.${NC}"
         return 1
     fi
     
-    echo -e "${BLUE}NetData Status:${NC}"
+    echo "${BLUE}NetData Status:${NC}"
     
     # Check if running
     if curl -fs http://localhost:19999/api/v1/info &> /dev/null; then
-        echo -e "${GREEN}● Running${NC}"
+        echo "${GREEN}● Running${NC}"
         
         # Get version
         VERSION=$(curl -fs http://localhost:19999/api/v1/info 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
@@ -251,7 +251,7 @@ netdata_status() {
         echo "  ${BLUE}NetData:${NC} http://localhost:19999"
         echo "  ${BLUE}OpsAgent:${NC} http://localhost:3001"
     else
-        echo -e "${RED}● Not running${NC}"
+        echo "${RED}● Not running${NC}"
         echo "  Try starting it: systemctl start netdata"
     fi
 }
@@ -261,20 +261,20 @@ netdata_logs() {
     if command -v journalctl &> /dev/null; then
         journalctl -u netdata -n "${1:-50}" --no-pager
     else
-        echo -e "${YELLOW}journalctl not available. Checking log files...${NC}"
+        echo "${YELLOW}journalctl not available. Checking log files...${NC}"
         if [ -f /var/log/netdata/error.log ]; then
             tail -n "${1:-50}" /var/log/netdata/error.log
         elif [ -f "$HOME/.netdata/var/log/netdata/error.log" ]; then
             tail -n "${1:-50}" "$HOME/.netdata/var/log/netdata/error.log"
         else
-            echo -e "${RED}NetData log files not found.${NC}"
+            echo "${RED}NetData log files not found.${NC}"
         fi
     fi
 }
 
 # Configure NetData
 netdata_config() {
-    echo -e "${BLUE}Opening NetData configuration...${NC}"
+    echo "${BLUE}Opening NetData configuration...${NC}"
     
     if [ -d /etc/netdata ]; then
         echo "Config directory: /etc/netdata"
@@ -283,24 +283,24 @@ netdata_config() {
         echo "Config directory: $HOME/.netdata/etc/netdata"
         ls -la "$HOME/.netdata/etc/netdata/"
     else
-        echo -e "${RED}NetData config directory not found.${NC}"
+        echo "${RED}NetData config directory not found.${NC}"
     fi
 }
 
 # Reload NetData health configuration
 netdata_reload() {
-    echo -e "${YELLOW}Reloading NetData health configuration...${NC}"
+    echo "${YELLOW}Reloading NetData health configuration...${NC}"
     
     if command -v netdatacli &> /dev/null; then
         netdatacli reload-health
-        echo -e "${GREEN}Health configuration reloaded.${NC}"
+        echo "${GREEN}Health configuration reloaded.${NC}"
     else
         # Try sending USR2 signal
         if pgrep netdata &> /dev/null; then
             killall -USR2 netdata
-            echo -e "${GREEN}Health configuration reloaded (via signal).${NC}"
+            echo "${GREEN}Health configuration reloaded (via signal).${NC}"
         else
-            echo -e "${RED}NetData is not running.${NC}"
+            echo "${RED}NetData is not running.${NC}"
         fi
     fi
 }
@@ -409,7 +409,7 @@ case "${1:-help}" in
         show_help
         ;;
     *)
-        echo -e "${RED}Unknown command: $1${NC}"
+        echo "${RED}Unknown command: $1${NC}"
         echo ""
         show_help
         exit 1
