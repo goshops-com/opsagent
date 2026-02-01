@@ -94,6 +94,64 @@ async function main() {
       },
       approveAction: (alertId, actionIndex) =>
         agent.approveAction(alertId, actionIndex),
+      // Process feedback from Control Panel
+      processFeedback: issueManager
+        ? async (issueId: string, feedback: string) => {
+            try {
+              // Get issue with all comments
+              const issueData = await issueManager.getIssueWithComments(issueId);
+              if (!issueData) {
+                return { success: false, error: "Issue not found" };
+              }
+
+              const { issue, comments } = issueData;
+
+              // Call agent to process feedback
+              const result = await agent.handleFeedback(
+                {
+                  issueId: issue.id,
+                  title: issue.title,
+                  description: issue.description,
+                  severity: issue.severity,
+                  status: issue.status,
+                  alertCount: issue.alertCount,
+                },
+                comments.map((c) => ({
+                  authorType: c.authorType,
+                  commentType: c.commentType,
+                  content: c.content,
+                  createdAt: c.createdAt,
+                })),
+                feedback
+              );
+
+              if (!result) {
+                return { success: false, error: "Agent failed to process feedback" };
+              }
+
+              // Record the agent's response as a comment
+              await issueManager.addComment(issueId, {
+                authorType: "agent",
+                commentType: "analysis",
+                content: result.analysis,
+                metadata: {
+                  triggeredByFeedback: true,
+                  recommendations: result.recommendations,
+                  timestamp: Date.now(),
+                },
+              });
+
+              console.log(`[Agent] Processed feedback for issue ${issueId}`);
+              return { success: true, analysis: result.analysis };
+            } catch (error) {
+              console.error(`[Agent] Error processing feedback:`, error);
+              return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+              };
+            }
+          }
+        : undefined,
     });
 
     await dashboard.start();

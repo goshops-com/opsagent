@@ -17,6 +17,10 @@ export interface DashboardDependencies {
     alertId: string,
     actionIndex: number
   ) => Promise<any>;
+  processFeedback?: (
+    issueId: string,
+    feedback: string
+  ) => Promise<{ success: boolean; analysis?: string; error?: string }>;
 }
 
 export class DashboardServer {
@@ -78,6 +82,38 @@ export class DashboardServer {
     // Health check
     this.app.get("/api/health", (req, res) => {
       res.json({ status: "ok", timestamp: Date.now() });
+    });
+
+    // Process feedback on an issue (triggered by Control Panel)
+    this.app.post("/api/issues/:issueId/process-feedback", async (req, res) => {
+      if (!this.deps.processFeedback) {
+        res.status(501).json({
+          success: false,
+          error: "Feedback processing not configured",
+        });
+        return;
+      }
+
+      const { issueId } = req.params;
+      const { feedback } = req.body;
+
+      if (!feedback) {
+        res.status(400).json({
+          success: false,
+          error: "Feedback content is required",
+        });
+        return;
+      }
+
+      try {
+        const result = await this.deps.processFeedback(issueId, feedback);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
     });
 
     // Serve dashboard for all other routes

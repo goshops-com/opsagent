@@ -204,6 +204,116 @@ export class AIAgentInterface extends EventEmitter {
     return this.results.find((r) => r.alertId === alertId);
   }
 
+  /**
+   * Process human feedback on an issue
+   * This is triggered when a human adds feedback via the Control Panel
+   */
+  async handleFeedback(
+    issueContext: {
+      issueId: string;
+      title: string;
+      description: string;
+      severity: string;
+      status: string;
+      alertCount: number;
+    },
+    comments: Array<{
+      authorType: string;
+      commentType: string;
+      content: string;
+      createdAt: number;
+    }>,
+    feedback: string
+  ): Promise<{ analysis: string; recommendations: any[] } | null> {
+    if (!this.enabled) {
+      return null;
+    }
+
+    console.log(`[Agent] Processing feedback for issue: ${issueContext.issueId}`);
+
+    // Build context from issue history
+    const historyContext = comments
+      .map((c) => `[${c.commentType}] ${c.authorType}: ${c.content}`)
+      .join("\n");
+
+    const prompt = `You are analyzing a system issue that a human operator has provided feedback on.
+
+## Issue Context
+- Title: ${issueContext.title}
+- Description: ${issueContext.description}
+- Severity: ${issueContext.severity}
+- Status: ${issueContext.status}
+- Alert Count: ${issueContext.alertCount}
+
+## Issue History
+${historyContext}
+
+## Human Feedback (IMPORTANT - incorporate this into your analysis)
+${feedback}
+
+Based on the human feedback, provide:
+1. An updated analysis that incorporates the human's input
+2. Any new recommendations based on their feedback
+3. Whether any previous recommendations should be reconsidered
+
+Respond in JSON format:
+{
+  "analysis": "Your updated analysis incorporating the human feedback...",
+  "recommendations": [
+    {
+      "action": "action_type",
+      "description": "What to do",
+      "risk": "low|medium|high",
+      "command": "optional command"
+    }
+  ],
+  "feedbackAcknowledgment": "Brief acknowledgment of the human's feedback"
+}`;
+
+    try {
+      const completion = await this.client.chat.completions.create({
+        model: this.model,
+        max_tokens: 2048,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a system administrator AI assistant. A human operator has provided feedback on an issue. Carefully consider their input and provide an updated analysis. Be responsive to their guidance and adjust your recommendations accordingly.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      });
+
+      const rawResponse = completion.choices[0]?.message?.content || "";
+      console.log(`[Agent] Received feedback response for issue ${issueContext.issueId}`);
+
+      // Parse the JSON response
+      try {
+        const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return {
+            analysis: parsed.analysis || rawResponse,
+            recommendations: parsed.recommendations || [],
+          };
+        }
+      } catch {
+        // If JSON parsing fails, return the raw analysis
+      }
+
+      return {
+        analysis: rawResponse,
+        recommendations: [],
+      };
+    } catch (error) {
+      console.error(`[Agent] Error processing feedback:`, error);
+      return null;
+    }
+  }
+
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
   }

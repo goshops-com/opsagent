@@ -1,9 +1,44 @@
-import { getIssueById, getIssueComments, updateIssueStatus, addIssueComment, type IssueComment } from "@/lib/db";
+import { getIssueById, getIssueComments, updateIssueStatus, addIssueComment, getServerById, type IssueComment } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+// Helper to trigger OpsAgent to process feedback
+async function triggerAgentFeedback(serverId: string, issueId: string, feedback: string): Promise<boolean> {
+  try {
+    // Get server IP to find the OpsAgent
+    const server = await getServerById(serverId);
+    if (!server?.ip_address) {
+      console.log(`[Control Panel] No IP address for server ${serverId}, skipping agent trigger`);
+      return false;
+    }
+
+    // OpsAgent dashboard runs on port 3001
+    const agentUrl = `http://${server.ip_address}:3001/api/issues/${issueId}/process-feedback`;
+    console.log(`[Control Panel] Triggering agent at ${agentUrl}`);
+
+    const response = await fetch(agentUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback }),
+      signal: AbortSignal.timeout(30000), // 30 second timeout
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`[Control Panel] Agent processed feedback: ${result.success}`);
+      return result.success;
+    } else {
+      console.error(`[Control Panel] Agent returned ${response.status}`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`[Control Panel] Failed to trigger agent:`, error);
+    return false;
+  }
+}
 
 // Server Actions
 async function updateStatus(formData: FormData) {
@@ -24,9 +59,19 @@ async function addComment(formData: FormData) {
   const content = formData.get("content") as string;
   const authorName = formData.get("authorName") as string;
   const commentType = formData.get("commentType") as string || "note";
+  const serverId = formData.get("serverId") as string;
 
   if (issueId && content) {
+    // Add the comment first
     await addIssueComment(issueId, content, authorName || undefined, commentType as IssueComment["comment_type"]);
+
+    // If this is feedback, trigger the agent to process it
+    if (commentType === "feedback" && serverId) {
+      // Fire and forget - don't wait for agent response to complete the redirect
+      triggerAgentFeedback(serverId, issueId, content).catch((e) => {
+        console.error("[Control Panel] Background agent trigger failed:", e);
+      });
+    }
   }
 
   redirect(`/issues/${issueId}`);
@@ -306,6 +351,7 @@ export default async function IssueDetailPage({
         </p>
         <form action={addComment} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <input type="hidden" name="issueId" value={issue.id} />
+          <input type="hidden" name="serverId" value={issue.server_id} />
           <input type="hidden" name="commentType" value="feedback" />
           <input type="hidden" name="authorName" value="Control Panel User" />
           <textarea

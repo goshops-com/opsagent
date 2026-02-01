@@ -62,6 +62,15 @@ export async function getServers(): Promise<Server[]> {
   return result.rows as unknown as Server[];
 }
 
+export async function getServerById(id: string): Promise<Server | null> {
+  const result = await db.execute({
+    sql: "SELECT * FROM servers WHERE id = ?",
+    args: [id],
+  });
+  if (result.rows.length === 0) return null;
+  return result.rows[0] as unknown as Server;
+}
+
 export async function getAlerts(limit = 50): Promise<Alert[]> {
   const result = await db.execute({
     sql: `SELECT a.*, s.hostname
