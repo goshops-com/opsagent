@@ -13,27 +13,56 @@ function formatDate(timestamp: number | string) {
 function parseAnalysis(analysis: string): string {
   if (!analysis) return "";
 
-  // Try to parse as JSON and extract the analysis field
+  const trimmed = analysis.trim();
+
+  // Try to extract analysis from various formats
   try {
-    // Check if it starts with JSON-like content
-    const trimmed = analysis.trim();
-    if (trimmed.startsWith("{") || trimmed.startsWith("```json")) {
-      // Remove markdown code fence if present
-      let jsonStr = trimmed;
-      if (jsonStr.startsWith("```json")) {
-        jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/```\s*$/, "");
-      }
-      const parsed = JSON.parse(jsonStr);
-      if (parsed.analysis) {
-        return parsed.analysis;
+    // Remove markdown code fence if present
+    let content = trimmed;
+    if (content.startsWith("```json")) {
+      content = content.replace(/^```json\s*/, "").replace(/```\s*$/, "");
+    } else if (content.startsWith("```")) {
+      content = content.replace(/^```\s*/, "").replace(/```\s*$/, "");
+    }
+
+    // Try to parse as JSON
+    if (content.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.analysis) {
+          return parsed.analysis;
+        }
+      } catch {
+        // JSON parse failed, try regex extraction for truncated JSON
+        const analysisMatch = content.match(/"analysis"\s*:\s*"([^"]+)/);
+        if (analysisMatch && analysisMatch[1]) {
+          // Unescape basic escape sequences
+          return analysisMatch[1]
+            .replace(/\\n/g, " ")
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, "\\");
+        }
       }
     }
   } catch {
-    // Not valid JSON, return as-is
+    // Extraction failed
   }
 
-  // Return original if not JSON or parsing failed
-  return analysis.slice(0, 500) + (analysis.length > 500 ? "..." : "");
+  // If it's just plain text (not JSON-like), return it
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("```")) {
+    return trimmed.slice(0, 500) + (trimmed.length > 500 ? "..." : "");
+  }
+
+  // Last resort: try regex on original
+  const analysisMatch = trimmed.match(/"analysis"\s*:\s*"([^"]+)/);
+  if (analysisMatch && analysisMatch[1]) {
+    return analysisMatch[1]
+      .replace(/\\n/g, " ")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
+
+  return "Analysis parsing failed";
 }
 
 function StatusBadge({ status }: { status: string }) {
