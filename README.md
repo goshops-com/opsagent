@@ -66,11 +66,14 @@ open http://localhost:3001   # OpsAgent AI analysis
 ## Features
 
 - **NetData Integration** - Real-time system metrics with 1-second granularity
-- **AI-Powered Remediation** - Uses LLMs (via OpenCode Zen) to analyze alerts and recommend actions
+- **AI-Powered Remediation** - Uses LLMs to analyze alerts and recommend actions
+- **Multiple AI Providers** - Choose between [OpenCode](https://opencode.ai) or [OpenRouter](https://openrouter.ai)
+- **Database Monitoring** - Monitor MongoDB, PostgreSQL, Redis, and more via NetData
 - **Issue Tracking** - Groups related alerts into issues, prevents notification spam
 - **Permission Levels** - Control what the agent can do automatically
 - **Discord Notifications** - Alerts humans via Discord when intervention is needed
 - **Multi-Server Support** - Deploy agents to multiple servers, monitor from a central panel
+- **Password Protected** - Control panel secured with auto-generated password
 - **Safe Action Execution** - Auto-executes safe actions, requires approval for risky ones
 
 ## Architecture
@@ -93,7 +96,7 @@ open http://localhost:3001   # OpsAgent AI analysis
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   AI Agent (kimi-k2.5)                           │
+│              AI Agent (OpenCode or OpenRouter)                   │
 │    • Analyzes the problem                                        │
 │    • Decides: auto-remediate OR notify humans OR both            │
 │    • Executes safe actions automatically                         │
@@ -132,11 +135,17 @@ OPSAGENT_MODE=both curl -fsSL https://raw.githubusercontent.com/goshops-com/opsa
 Edit `~/.opsagent/.env` with your credentials:
 
 ```env
-# Required: OpenCode API key for AI agent
+# AI Provider (choose one)
+# Option 1: OpenCode (default)
 OPENCODE_API_KEY=sk-your-opencode-key
 
+# Option 2: OpenRouter (100+ models available)
+OPENROUTER_API_KEY=sk-or-v1-your-key
+
+# Backend (choose one)
 # Option 1: Connect to a Control Panel (for agents)
 CONTROL_PANEL_URL=http://your-control-panel:3002
+CONTROL_PANEL_PASSWORD=your-panel-password
 
 # Option 2: Direct database (for standalone or control panel)
 TURSO_DATABASE_URL=libsql://your-db.turso.io
@@ -147,6 +156,24 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 # Optional: Custom server name
 SERVER_NAME=web-server-1
+```
+
+### AI Provider Configuration
+
+Configure the AI provider in `~/.opsagent/config/netdata.yaml`:
+
+```yaml
+opsagent:
+  # Provider: opencode or openrouter
+  provider: opencode
+
+  # Model (depends on provider)
+  # OpenCode: kimi-k2.5, gpt-4o, claude-3.5-sonnet
+  # OpenRouter: anthropic/claude-sonnet-4, openai/gpt-4o, google/gemini-pro-1.5
+  model: kimi-k2.5
+
+  # Permission level
+  permissionLevel: limited
 ```
 
 ## CLI Commands
@@ -188,12 +215,18 @@ For multi-server deployments, the Control Panel provides centralized monitoring:
 # On the control panel server
 OPSAGENT_MODE=panel curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
 cd ~/.opsagent && bun run panel
+```
 
-# On each monitored server, set CONTROL_PANEL_URL in .env
-CONTROL_PANEL_URL=http://control-panel-host:3002
+The installer will generate a secure password and display it. **Save this password!**
+
+```bash
+# On each monitored server, install the agent and provide the password
+curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash
+# When prompted, enter the Control Panel URL and password
 ```
 
 Features:
+- **Password protected** - Web UI uses Basic Auth (username: `admin`)
 - View all registered agents and their online/offline status
 - Aggregated alerts across all servers
 - AI agent analysis and recommendations
@@ -210,6 +243,19 @@ Features:
 | `restart_service` | Medium | No | Restart a service (requires approval) |
 | `cleanup_disk` | Low | No | Clean temp files (requires approval) |
 | `custom_command` | High | No | Run shell command (requires approval) |
+
+## Database Monitoring
+
+OpsAgent can monitor databases through NetData collectors:
+
+| Database | Metrics | Documentation |
+|----------|---------|---------------|
+| **MongoDB** | Connections, operations, memory, replication | [Setup Guide](docs/monitoring-databases.md#mongodb) |
+| **PostgreSQL** | Connections, transactions, locks, replication | [Setup Guide](docs/monitoring-databases.md#postgresql) |
+| **Redis** | Memory, clients, commands, keyspace | [Setup Guide](docs/monitoring-databases.md#redis) |
+| **MySQL** | Connections, queries, replication | [NetData Docs](https://learn.netdata.cloud/docs/collecting-metrics/databases/mysql) |
+
+See [docs/monitoring-databases.md](docs/monitoring-databases.md) for detailed setup instructions.
 
 ## Permission Levels
 
