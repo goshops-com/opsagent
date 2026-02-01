@@ -1,5 +1,6 @@
 import { getServers, getAlerts, getAgentResponses, getAgentActions, getStats } from "@/lib/db";
-import { Server, Activity, Bell, Bot, Clock } from "lucide-react";
+import { Server, Activity, Bell, Bot, Clock, AlertCircle } from "lucide-react";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -66,7 +67,7 @@ export default async function Dashboard() {
       </header>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "32px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "32px" }}>
         <div style={statCardStyle}>
           <Server size={32} color="#3b82f6" />
           <div>
@@ -88,6 +89,15 @@ export default async function Dashboard() {
             <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Pending Actions</div>
           </div>
         </div>
+        <Link href="/issues" style={{ textDecoration: "none" }}>
+          <div style={{ ...statCardStyle, cursor: "pointer", transition: "all 0.2s" }}>
+            <AlertCircle size={32} color="#ef4444" />
+            <div>
+              <div style={{ fontSize: "24px", fontWeight: 600 }}>{stats.openIssues || 0}</div>
+              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Open Issues →</div>
+            </div>
+          </div>
+        </Link>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>

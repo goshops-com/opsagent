@@ -12,21 +12,64 @@ rules:
     sustained:
       threshold: 80
       duration: 300000  # 5 minutes in ms
+    loadAverage:
+      warning: 4.0      # 1-minute load average
+      critical: 8.0
+      perCore: true     # If true, divide by CPU core count
+    temperature:
+      warning: 70       # Celsius
+      critical: 85
+    iowait:
+      warning: 20       # Percentage of CPU spent waiting for I/O
+      critical: 40
 
   memory:
     warning: 75
     critical: 90
+    swap:
+      warning: 50       # Swap usage percentage
+      critical: 80
+    available:
+      warning: 20       # Available memory percentage (low = warning)
+      critical: 10
 
   disk:
     warning: 80
     critical: 95
+    perMount: true      # Monitor each mount point separately
     growthRateWarning: 1073741824  # 1GB per hour in bytes
+    inodes:
+      warning: 80       # Inode usage percentage
+      critical: 95
+    io:
+      readRateWarning: 104857600   # 100MB/s
+      readRateCritical: 209715200  # 200MB/s
+      writeRateWarning: 104857600  # 100MB/s
+      writeRateCritical: 209715200 # 200MB/s
 
   network:
     errorRateWarning: 0.01  # 1% error rate
+    bandwidth:
+      rxWarning: 104857600   # 100MB/s received
+      rxCritical: 209715200  # 200MB/s received
+      txWarning: 104857600   # 100MB/s transmitted
+      txCritical: 209715200  # 200MB/s transmitted
 
   processes:
-    zombieWarning: 5  # Alert if more than 5 zombie processes
+    zombieWarning: 5      # Alert if more than 5 zombie processes
+    zombieCritical: 20
+    blockedWarning: 10    # Alert if more than 10 blocked processes
+    blockedCritical: 50
+    totalWarning: 500     # Alert if more than 500 total processes
+    totalCritical: 1000
+    highCpuWarning: 80    # Alert if any single process uses >80% CPU
+    highCpuCritical: 95
+    highMemoryWarning: 80 # Alert if any single process uses >80% memory
+    highMemoryCritical: 95
+
+  fileDescriptors:
+    warning: 70           # FD usage percentage
+    critical: 90
 
 # Alert management
 alerts:

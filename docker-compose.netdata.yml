@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  netdata:
+    image: netdata/netdata:stable
+    container_name: netdata
+    hostname: netdata-opsagent-test
+    pid: host
+    network_mode: host
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - netdataconfig:/etc/netdata
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+      - /:/host/root:ro,rslave
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/log:/host/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - NETDATA_CLAIM_TOKEN=${NETDATA_CLAIM_TOKEN:-}
+      - NETDATA_CLAIM_URL=${NETDATA_CLAIM_URL:-https://app.netdata.cloud}
+      - NETDATA_CLAIM_ROOMS=${NETDATA_CLAIM_ROOMS:-}
+    ports:
+      - "19999:19999"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:19999/api/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  opsagent:
+    build:
+      context: .
+      dockerfile: Dockerfile.netdata
+    container_name: opsagent
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      netdata:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - NETDATA_URL=http://localhost:19999
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - TURSO_DATABASE_URL=${TURSO_DATABASE_URL}
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN}
+      - SERVER_NAME=${SERVER_NAME:-docker-test}
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Optional: PostgreSQL for testing database monitoring
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-test
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=opsagent
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-opsagent123}
+      - POSTGRES_DB=testdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Redis for testing
+  redis:
+    image: redis:7-alpine
+    container_name: redis-test
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Nginx for testing web server monitoring
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-test
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  netdataconfig:
+  netdatalib:
+  netdatacache:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: opsagent-netdata-network

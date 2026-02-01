@@ -86,6 +86,38 @@ CREATE TABLE IF NOT EXISTS metrics_snapshots (
   FOREIGN KEY (server_id) REFERENCES servers(id)
 );
 
+-- Issues table: track ongoing investigations (one per alert type, not one per alert)
+CREATE TABLE IF NOT EXISTS issues (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL,
+  alert_fingerprint TEXT NOT NULL, -- hash of alert name + context to group related alerts
+  title TEXT NOT NULL,
+  description TEXT,
+  severity TEXT NOT NULL,
+  status TEXT DEFAULT 'open', -- open, investigating, resolved, closed
+  source TEXT NOT NULL, -- netdata, opsagent, etc.
+  source_alert_id TEXT, -- reference to original alert
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  resolved_at INTEGER,
+  alert_count INTEGER DEFAULT 1, -- how many times this alert fired
+  metadata TEXT, -- JSON for additional context
+  FOREIGN KEY (server_id) REFERENCES servers(id)
+);
+
+-- Issue comments/activity log: track all actions and updates
+CREATE TABLE IF NOT EXISTS issue_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id TEXT NOT NULL,
+  author_type TEXT NOT NULL, -- 'agent' or 'human'
+  author_name TEXT, -- for humans, their name/identifier
+  comment_type TEXT NOT NULL, -- 'analysis', 'action', 'status_change', 'alert_fired', 'note'
+  content TEXT NOT NULL,
+  metadata TEXT, -- JSON for action details, command output, etc.
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_alerts_server_id ON alerts(server_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at);
@@ -94,4 +126,12 @@ CREATE INDEX IF NOT EXISTS idx_alerts_resolved ON alerts(resolved_at);
 CREATE INDEX IF NOT EXISTS idx_agent_responses_alert_id ON agent_responses(alert_id);
 CREATE INDEX IF NOT EXISTS idx_agent_actions_alert_id ON agent_actions(alert_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_server_timestamp ON metrics_snapshots(server_id, timestamp);
+
+-- Issue indexes
+CREATE INDEX IF NOT EXISTS idx_issues_server_id ON issues(server_id);
+CREATE INDEX IF NOT EXISTS idx_issues_fingerprint ON issues(alert_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
+CREATE INDEX IF NOT EXISTS idx_issues_last_seen ON issues(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_id ON issue_comments(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_comments_created_at ON issue_comments(created_at);
 `;

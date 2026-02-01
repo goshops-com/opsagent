@@ -97,15 +97,191 @@ export async function getAgentActions(limit = 50): Promise<AgentAction[]> {
 }
 
 export async function getStats() {
-  const [servers, alerts, pendingActions] = await Promise.all([
+  const [servers, alerts, pendingActions, openIssues] = await Promise.all([
     db.execute("SELECT COUNT(*) as count FROM servers WHERE status = 'active'"),
     db.execute("SELECT COUNT(*) as count FROM alerts WHERE status = 'active'"),
     db.execute("SELECT COUNT(*) as count FROM agent_actions WHERE status = 'pending'"),
+    db.execute("SELECT COUNT(*) as count FROM issues WHERE status IN ('open', 'investigating')"),
   ]);
 
   return {
     activeServers: Number(servers.rows[0]?.count ?? 0),
     activeAlerts: Number(alerts.rows[0]?.count ?? 0),
     pendingActions: Number(pendingActions.rows[0]?.count ?? 0),
+    openIssues: Number(openIssues.rows[0]?.count ?? 0),
+  };
+}
+
+// ============================================================================
+// ISSUE MANAGEMENT
+// ============================================================================
+
+export interface Issue {
+  id: string;
+  server_id: string;
+  alert_fingerprint: string;
+  title: string;
+  description: string | null;
+  severity: string;
+  status: "open" | "investigating" | "resolved" | "closed";
+  source: string;
+  source_alert_id: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+  alert_count: number;
+  metadata: string | null;
+  hostname?: string;
+}
+
+export interface IssueComment {
+  id: number;
+  issue_id: string;
+  author_type: "agent" | "human";
+  author_name: string | null;
+  comment_type: "analysis" | "action" | "status_change" | "alert_fired" | "note";
+  content: string;
+  metadata: string | null;
+  created_at: string;
+}
+
+export async function getIssues(status?: string, limit = 50): Promise<Issue[]> {
+  let sql = `SELECT i.*, s.hostname 
+             FROM issues i 
+             LEFT JOIN servers s ON i.server_id = s.id`;
+  const args: (string | number)[] = [];
+  
+  if (status && status !== "all") {
+    sql += " WHERE i.status = ?";
+    args.push(status);
+  }
+  
+  sql += " ORDER BY i.last_seen_at DESC LIMIT ?";
+  args.push(limit);
+  
+  const result = await db.execute({ sql, args });
+  return result.rows as unknown as Issue[];
+}
+
+export async function getIssueById(id: string): Promise<Issue | null> {
+  const result = await db.execute({
+    sql: `SELECT i.*, s.hostname 
+          FROM issues i 
+          LEFT JOIN servers s ON i.server_id = s.id 
+          WHERE i.id = ?`,
+    args: [id],
+  });
+  
+  if (result.rows.length === 0) return null;
+  return result.rows[0] as unknown as Issue;
+}
+
+export async function getIssueComments(issueId: string): Promise<IssueComment[]> {
+  const result = await db.execute({
+    sql: `SELECT * FROM issue_comments 
+          WHERE issue_id = ? 
+          ORDER BY created_at ASC`,
+    args: [issueId],
+  });
+  return result.rows as unknown as IssueComment[];
+}
+
+export async function updateIssueStatus(
+  issueId: string, 
+  status: string, 
+  authorName?: string
+): Promise<void> {
+  const now = Date.now();
+  const resolvedAt = status === "resolved" || status === "closed" ? now : null;
+  
+  // Update issue status
+  await db.execute({
+    sql: `UPDATE issues 
+          SET status = ?, resolved_at = ?, last_seen_at = ? 
+          WHERE id = ?`,
+    args: [status, resolvedAt, now, issueId],
+  });
+  
+  // Add status change comment
+  await db.execute({
+    sql: `INSERT INTO issue_comments 
+          (issue_id, author_type, author_name, comment_type, content, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      issueId,
+      "human",
+      authorName || "Control Panel User",
+      "status_change",
+      `Status changed to ${status}`,
+      JSON.stringify({ newStatus: status, changedBy: authorName || "Control Panel" }),
+      now,
+    ],
+  });
+}
+
+export async function addIssueComment(
+  issueId: string,
+  content: string,
+  authorName?: string,
+  commentType: IssueComment["comment_type"] = "note"
+): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO issue_comments 
+          (issue_id, author_type, author_name, comment_type, content, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      issueId,
+      "human",
+      authorName || "Control Panel User",
+      commentType,
+      content,
+      JSON.stringify({ addedBy: authorName || "Control Panel" }),
+      Date.now(),
+    ],
+  });
+  
+  // Update last_seen_at on the issue
+  await db.execute({
+    sql: "UPDATE issues SET last_seen_at = ? WHERE id = ?",
+    args: [Date.now(), issueId],
+  });
+}
+
+export async function discardIssue(issueId: string, authorName?: string): Promise<void> {
+  // Discard = close with a note
+  await updateIssueStatus(issueId, "closed", authorName);
+  
+  // Add discard note
+  await db.execute({
+    sql: `INSERT INTO issue_comments 
+          (issue_id, author_type, author_name, comment_type, content, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      issueId,
+      "human",
+      authorName || "Control Panel User",
+      "note",
+      "Issue discarded/closed by user",
+      JSON.stringify({ action: "discard", closedBy: authorName || "Control Panel" }),
+      Date.now(),
+    ],
+  });
+}
+
+export async function getIssueStats() {
+  const [open, investigating, resolved, closed, total] = await Promise.all([
+    db.execute("SELECT COUNT(*) as count FROM issues WHERE status = 'open'"),
+    db.execute("SELECT COUNT(*) as count FROM issues WHERE status = 'investigating'"),
+    db.execute("SELECT COUNT(*) as count FROM issues WHERE status = 'resolved'"),
+    db.execute("SELECT COUNT(*) as count FROM issues WHERE status = 'closed'"),
+    db.execute("SELECT COUNT(*) as count FROM issues"),
+  ]);
+  
+  return {
+    open: Number(open.rows[0]?.count ?? 0),
+    investigating: Number(investigating.rows[0]?.count ?? 0),
+    resolved: Number(resolved.rows[0]?.count ?? 0),
+    closed: Number(closed.rows[0]?.count ?? 0),
+    total: Number(total.rows[0]?.count ?? 0),
   };
 }

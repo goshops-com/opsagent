@@ -1,0 +1,42 @@
+# Dockerfile for OpsAgent with NetData Integration
+FROM oven/bun:1.1-alpine
+
+# Install dependencies
+RUN apk add --no-cache \
+    curl \
+    wget \
+    ca-certificates \
+    tzdata
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json bun.lockb ./
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY src ./src
+COPY config ./config
+COPY public ./public
+COPY bin ./bin
+COPY scripts ./scripts
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3001
+
+# Expose dashboard port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget -q -O - http://localhost:3001/health || exit 1
+
+# Run the application with NetData integration
+CMD ["bun", "run", "src/index-netdata.ts"]

@@ -11,16 +11,24 @@ interface SustainedState {
   values: MetricHistory[];
 }
 
+interface ProcessAlertState {
+  lastAlertTime: number;
+  processName: string;
+}
+
 export class RuleEngine {
   private rules: Rule[] = [];
   private metricHistory: Map<string, MetricHistory[]> = new Map();
   private sustainedStates: Map<string, SustainedState> = new Map();
+  private processAlertState: Map<string, ProcessAlertState> = new Map();
   private historyRetention = 3600000; // 1 hour
+  private config: any = {};
 
   constructor() {}
 
   loadRulesFromConfig(config: any): void {
     this.rules = [];
+    this.config = config;
 
     // CPU rules
     if (config.rules?.cpu) {
@@ -56,6 +64,66 @@ export class RuleEngine {
           message: `CPU usage sustained above ${cpu.sustained.threshold}% for extended period`,
         });
       }
+      if (cpu.loadAverage?.warning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "cpu.loadAverage.1min",
+          operator: ">",
+          value: cpu.loadAverage.warning,
+          severity: "warning",
+          message: `System load average (1min) above ${cpu.loadAverage.warning}`,
+        });
+      }
+      if (cpu.loadAverage?.critical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "cpu.loadAverage.1min",
+          operator: ">",
+          value: cpu.loadAverage.critical,
+          severity: "critical",
+          message: `System load average (1min) critically high (above ${cpu.loadAverage.critical})`,
+        });
+      }
+      if (cpu.temperature?.warning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "cpu.temperature",
+          operator: ">",
+          value: cpu.temperature.warning,
+          severity: "warning",
+          message: `CPU temperature above ${cpu.temperature.warning}°C`,
+        });
+      }
+      if (cpu.temperature?.critical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "cpu.temperature",
+          operator: ">",
+          value: cpu.temperature.critical,
+          severity: "critical",
+          message: `CPU temperature critically high (above ${cpu.temperature.critical}°C)`,
+        });
+      }
+      if (cpu.iowait?.warning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "cpu.iowait",
+          operator: ">",
+          value: cpu.iowait.warning,
+          severity: "warning",
+          message: `CPU I/O wait above ${cpu.iowait.warning}%`,
+        });
+      }
+      if (cpu.iowait?.critical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "cpu.iowait",
+          operator: ">",
+          value: cpu.iowait.critical,
+          severity: "critical",
+          message: `CPU I/O wait critically high (above ${cpu.iowait.critical}%)`,
+        });
+      }
     }
 
     // Memory rules
@@ -79,6 +147,46 @@ export class RuleEngine {
           value: mem.critical,
           severity: "critical",
           message: `Memory usage critically high (above ${mem.critical}%)`,
+        });
+      }
+      if (mem.swap?.warning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "memory.swapPercent",
+          operator: ">",
+          value: mem.swap.warning,
+          severity: "warning",
+          message: `Swap usage above ${mem.swap.warning}%`,
+        });
+      }
+      if (mem.swap?.critical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "memory.swapPercent",
+          operator: ">",
+          value: mem.swap.critical,
+          severity: "critical",
+          message: `Swap usage critically high (above ${mem.swap.critical}%)`,
+        });
+      }
+      if (mem.available?.warning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "memory.availablePercent",
+          operator: "<",
+          value: mem.available.warning,
+          severity: "warning",
+          message: `Available memory below ${mem.available.warning}%`,
+        });
+      }
+      if (mem.available?.critical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "memory.availablePercent",
+          operator: "<",
+          value: mem.available.critical,
+          severity: "critical",
+          message: `Available memory critically low (below ${mem.available.critical}%)`,
         });
       }
     }
@@ -116,6 +224,66 @@ export class RuleEngine {
           message: "Disk usage growing rapidly",
         });
       }
+      if (disk.inodes?.warning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "disk.inodes.maxUsedPercent",
+          operator: ">",
+          value: disk.inodes.warning,
+          severity: "warning",
+          message: `Inode usage above ${disk.inodes.warning}%`,
+        });
+      }
+      if (disk.inodes?.critical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "disk.inodes.maxUsedPercent",
+          operator: ">",
+          value: disk.inodes.critical,
+          severity: "critical",
+          message: `Inode usage critically high (above ${disk.inodes.critical}%)`,
+        });
+      }
+      if (disk.io?.readRateWarning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "disk.io.readRate",
+          operator: ">",
+          value: disk.io.readRateWarning,
+          severity: "warning",
+          message: `Disk read rate above ${(disk.io.readRateWarning / 1048576).toFixed(0)}MB/s`,
+        });
+      }
+      if (disk.io?.readRateCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "disk.io.readRate",
+          operator: ">",
+          value: disk.io.readRateCritical,
+          severity: "critical",
+          message: `Disk read rate critically high (above ${(disk.io.readRateCritical / 1048576).toFixed(0)}MB/s)`,
+        });
+      }
+      if (disk.io?.writeRateWarning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "disk.io.writeRate",
+          operator: ">",
+          value: disk.io.writeRateWarning,
+          severity: "warning",
+          message: `Disk write rate above ${(disk.io.writeRateWarning / 1048576).toFixed(0)}MB/s`,
+        });
+      }
+      if (disk.io?.writeRateCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "disk.io.writeRate",
+          operator: ">",
+          value: disk.io.writeRateCritical,
+          severity: "critical",
+          message: `Disk write rate critically high (above ${(disk.io.writeRateCritical / 1048576).toFixed(0)}MB/s)`,
+        });
+      }
     }
 
     // Network rules
@@ -128,7 +296,47 @@ export class RuleEngine {
           operator: ">",
           value: net.errorRateWarning,
           severity: "warning",
-          message: `Network error rate above ${net.errorRateWarning * 100}%`,
+          message: `Network error rate above ${(net.errorRateWarning * 100).toFixed(1)}%`,
+        });
+      }
+      if (net.bandwidth?.rxWarning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "network.bandwidth.rxSpeed",
+          operator: ">",
+          value: net.bandwidth.rxWarning,
+          severity: "warning",
+          message: `Network receive rate above ${(net.bandwidth.rxWarning / 1048576).toFixed(0)}MB/s`,
+        });
+      }
+      if (net.bandwidth?.rxCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "network.bandwidth.rxSpeed",
+          operator: ">",
+          value: net.bandwidth.rxCritical,
+          severity: "critical",
+          message: `Network receive rate critically high (above ${(net.bandwidth.rxCritical / 1048576).toFixed(0)}MB/s)`,
+        });
+      }
+      if (net.bandwidth?.txWarning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "network.bandwidth.txSpeed",
+          operator: ">",
+          value: net.bandwidth.txWarning,
+          severity: "warning",
+          message: `Network transmit rate above ${(net.bandwidth.txWarning / 1048576).toFixed(0)}MB/s`,
+        });
+      }
+      if (net.bandwidth?.txCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "network.bandwidth.txSpeed",
+          operator: ">",
+          value: net.bandwidth.txCritical,
+          severity: "critical",
+          message: `Network transmit rate critically high (above ${(net.bandwidth.txCritical / 1048576).toFixed(0)}MB/s)`,
         });
       }
     }
@@ -142,10 +350,82 @@ export class RuleEngine {
           metric: "processes.zombie",
           operator: ">",
           value: proc.zombieWarning,
-          severity: "warning",
+          severity: proc.zombieCritical ? "warning" : "critical",
           message: `More than ${proc.zombieWarning} zombie processes detected`,
         });
       }
+      if (proc.zombieCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "processes.zombie",
+          operator: ">",
+          value: proc.zombieCritical,
+          severity: "critical",
+          message: `More than ${proc.zombieCritical} zombie processes detected`,
+        });
+      }
+      if (proc.blockedWarning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "processes.blocked",
+          operator: ">",
+          value: proc.blockedWarning,
+          severity: proc.blockedCritical ? "warning" : "critical",
+          message: `More than ${proc.blockedWarning} blocked processes detected`,
+        });
+      }
+      if (proc.blockedCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "processes.blocked",
+          operator: ">",
+          value: proc.blockedCritical,
+          severity: "critical",
+          message: `More than ${proc.blockedCritical} blocked processes detected`,
+        });
+      }
+      if (proc.totalWarning) {
+        this.rules.push({
+          type: "threshold",
+          metric: "processes.total",
+          operator: ">",
+          value: proc.totalWarning,
+          severity: proc.totalCritical ? "warning" : "critical",
+          message: `More than ${proc.totalWarning} total processes running`,
+        });
+      }
+      if (proc.totalCritical) {
+        this.rules.push({
+          type: "threshold",
+          metric: "processes.total",
+          operator: ">",
+          value: proc.totalCritical,
+          severity: "critical",
+          message: `More than ${proc.totalCritical} total processes running`,
+        });
+      }
+    }
+
+    // File descriptor rules
+    if (config.rules?.fileDescriptors?.warning) {
+      this.rules.push({
+        type: "threshold",
+        metric: "fileDescriptors.usedPercent",
+        operator: ">",
+        value: config.rules.fileDescriptors.warning,
+        severity: config.rules.fileDescriptors.critical ? "warning" : "critical",
+        message: `File descriptor usage above ${config.rules.fileDescriptors.warning}%`,
+      });
+    }
+    if (config.rules?.fileDescriptors?.critical) {
+      this.rules.push({
+        type: "threshold",
+        metric: "fileDescriptors.usedPercent",
+        operator: ">",
+        value: config.rules.fileDescriptors.critical,
+        severity: "critical",
+        message: `File descriptor usage critically high (above ${config.rules.fileDescriptors.critical}%)`,
+      });
     }
 
     console.log(`Loaded ${this.rules.length} rules`);
@@ -157,11 +437,24 @@ export class RuleEngine {
     if (parts[0] === "cpu") {
       if (parts[1] === "usage") return metrics.cpu.usage;
       if (parts[1] === "temperature") return metrics.cpu.temperature ?? null;
+      if (parts[1] === "iowait") return metrics.cpu.iowait ?? null;
+      if (parts[1] === "loadAverage") {
+        const idx = parts[2] === "1min" ? 0 : parts[2] === "5min" ? 1 : parts[2] === "15min" ? 2 : 0;
+        const load = metrics.cpu.loadAverage[idx];
+        // If perCore is enabled, divide by number of cores (approximate)
+        if (this.config.rules?.cpu?.loadAverage?.perCore && metrics.cpu.loadAverage.length > 0) {
+          // Assume 4 cores if we can't detect - this is a simplification
+          const cores = 4;
+          return load / cores;
+        }
+        return load;
+      }
     }
 
     if (parts[0] === "memory") {
       if (parts[1] === "usedPercent") return metrics.memory.usedPercent;
       if (parts[1] === "swapPercent") return metrics.memory.swapPercent;
+      if (parts[1] === "availablePercent") return metrics.memory.availablePercent;
     }
 
     if (parts[0] === "disk") {
@@ -171,14 +464,36 @@ export class RuleEngine {
       if (parts[1] === "totalUsed") {
         return metrics.disk.mounts.reduce((sum, m) => sum + m.used, 0);
       }
+      if (parts[1] === "inodes") {
+        if (parts[2] === "maxUsedPercent") {
+          const inodePercents = metrics.disk.mounts
+            .map((m) => m.inodesUsedPercent)
+            .filter((p): p is number => p !== undefined);
+          return inodePercents.length > 0 ? Math.max(...inodePercents) : null;
+        }
+      }
+      if (parts[1] === "io") {
+        if (parts[2] === "readRate") return metrics.disk.totalReadRate ?? null;
+        if (parts[2] === "writeRate") return metrics.disk.totalWriteRate ?? null;
+      }
     }
 
     if (parts[0] === "network") {
       if (parts[1] === "errorRate") return metrics.network.errorRate;
+      if (parts[1] === "bandwidth") {
+        if (parts[2] === "rxSpeed") return metrics.network.totalRxSpeed ?? null;
+        if (parts[2] === "txSpeed") return metrics.network.totalTxSpeed ?? null;
+      }
     }
 
     if (parts[0] === "processes") {
       if (parts[1] === "zombie") return metrics.processes.zombie;
+      if (parts[1] === "blocked") return metrics.processes.blocked;
+      if (parts[1] === "total") return metrics.processes.total;
+    }
+
+    if (parts[0] === "fileDescriptors") {
+      if (parts[1] === "usedPercent") return metrics.fileDescriptors?.usedPercent ?? null;
     }
 
     return null;
@@ -282,6 +597,7 @@ export class RuleEngine {
     const violations: RuleViolation[] = [];
     const timestamp = metrics.timestamp;
 
+    // Evaluate standard rules
     for (const rule of this.rules) {
       const value = this.getMetricValue(metrics, rule.metric);
       if (value === null) continue;
@@ -315,6 +631,176 @@ export class RuleEngine {
           timestamp,
           metric: rule.metric,
         });
+      }
+    }
+
+    // Evaluate per-mount disk usage if enabled
+    if (this.config.rules?.disk?.perMount !== false) {
+      const diskRules = this.config.rules?.disk;
+      for (const mount of metrics.disk.mounts) {
+        // Skip pseudo filesystems
+        if (mount.fs === "tmpfs" || mount.fs === "devtmpfs" || mount.fs === "overlay") continue;
+        
+        if (diskRules?.warning && mount.usedPercent > diskRules.warning) {
+          violations.push({
+            rule: {
+              type: "threshold",
+              metric: `disk.mount.${mount.mount}.usedPercent`,
+              operator: ">",
+              value: diskRules.warning,
+              severity: diskRules.critical ? "warning" : "critical",
+              message: `Disk usage on ${mount.mount} above ${diskRules.warning}%`,
+            },
+            currentValue: mount.usedPercent,
+            timestamp,
+            metric: `disk.mount.${mount.mount}.usedPercent`,
+          });
+        }
+        if (diskRules?.critical && mount.usedPercent > diskRules.critical) {
+          violations.push({
+            rule: {
+              type: "threshold",
+              metric: `disk.mount.${mount.mount}.usedPercent`,
+              operator: ">",
+              value: diskRules.critical,
+              severity: "critical",
+              message: `Disk usage on ${mount.mount} critically high (above ${diskRules.critical}%)`,
+            },
+            currentValue: mount.usedPercent,
+            timestamp,
+            metric: `disk.mount.${mount.mount}.usedPercent`,
+          });
+        }
+
+        // Per-mount inode checks
+        if (mount.inodesUsedPercent !== undefined) {
+          if (diskRules?.inodes?.warning && mount.inodesUsedPercent > diskRules.inodes.warning) {
+            violations.push({
+              rule: {
+                type: "threshold",
+                metric: `disk.mount.${mount.mount}.inodesUsedPercent`,
+                operator: ">",
+                value: diskRules.inodes.warning,
+                severity: diskRules.inodes.critical ? "warning" : "critical",
+                message: `Inode usage on ${mount.mount} above ${diskRules.inodes.warning}%`,
+              },
+              currentValue: mount.inodesUsedPercent,
+              timestamp,
+              metric: `disk.mount.${mount.mount}.inodesUsedPercent`,
+            });
+          }
+          if (diskRules?.inodes?.critical && mount.inodesUsedPercent > diskRules.inodes.critical) {
+            violations.push({
+              rule: {
+                type: "threshold",
+                metric: `disk.mount.${mount.mount}.inodesUsedPercent`,
+                operator: ">",
+                value: diskRules.inodes.critical,
+                severity: "critical",
+                message: `Inode usage on ${mount.mount} critically high (above ${diskRules.inodes.critical}%)`,
+              },
+              currentValue: mount.inodesUsedPercent,
+              timestamp,
+              metric: `disk.mount.${mount.mount}.inodesUsedPercent`,
+            });
+          }
+        }
+      }
+    }
+
+    // Evaluate high CPU processes
+    const procRules = this.config.rules?.processes;
+    if (procRules?.highCpuWarning || procRules?.highCpuCritical) {
+      for (const proc of metrics.processes.topCpu) {
+        if (procRules?.highCpuCritical && proc.cpu > procRules.highCpuCritical) {
+          const alertKey = `process.highcpu.${proc.name}.${proc.pid}`;
+          const lastAlert = this.processAlertState.get(alertKey);
+          
+          // Rate limit process alerts to avoid spam
+          if (!lastAlert || (timestamp - lastAlert.lastAlertTime > 300000)) { // 5 min cooldown
+            violations.push({
+              rule: {
+                type: "threshold",
+                metric: `process.${proc.pid}.cpu`,
+                operator: ">",
+                value: procRules.highCpuCritical,
+                severity: "critical",
+                message: `Process ${proc.name} (PID ${proc.pid}) using ${proc.cpu.toFixed(1)}% CPU`,
+              },
+              currentValue: proc.cpu,
+              timestamp,
+              metric: `process.${proc.pid}.cpu`,
+            });
+            this.processAlertState.set(alertKey, { lastAlertTime: timestamp, processName: proc.name });
+          }
+        } else if (procRules?.highCpuWarning && proc.cpu > procRules.highCpuWarning) {
+          const alertKey = `process.highcpu.${proc.name}.${proc.pid}`;
+          const lastAlert = this.processAlertState.get(alertKey);
+          
+          if (!lastAlert || (timestamp - lastAlert.lastAlertTime > 300000)) {
+            violations.push({
+              rule: {
+                type: "threshold",
+                metric: `process.${proc.pid}.cpu`,
+                operator: ">",
+                value: procRules.highCpuWarning,
+                severity: "warning",
+                message: `Process ${proc.name} (PID ${proc.pid}) using ${proc.cpu.toFixed(1)}% CPU`,
+              },
+              currentValue: proc.cpu,
+              timestamp,
+              metric: `process.${proc.pid}.cpu`,
+            });
+            this.processAlertState.set(alertKey, { lastAlertTime: timestamp, processName: proc.name });
+          }
+        }
+      }
+    }
+
+    // Evaluate high memory processes
+    if (procRules?.highMemoryWarning || procRules?.highMemoryCritical) {
+      for (const proc of metrics.processes.topMemory) {
+        if (procRules?.highMemoryCritical && proc.memory > procRules.highMemoryCritical) {
+          const alertKey = `process.highmem.${proc.name}.${proc.pid}`;
+          const lastAlert = this.processAlertState.get(alertKey);
+          
+          if (!lastAlert || (timestamp - lastAlert.lastAlertTime > 300000)) {
+            violations.push({
+              rule: {
+                type: "threshold",
+                metric: `process.${proc.pid}.memory`,
+                operator: ">",
+                value: procRules.highMemoryCritical,
+                severity: "critical",
+                message: `Process ${proc.name} (PID ${proc.pid}) using ${proc.memory.toFixed(1)}% memory`,
+              },
+              currentValue: proc.memory,
+              timestamp,
+              metric: `process.${proc.pid}.memory`,
+            });
+            this.processAlertState.set(alertKey, { lastAlertTime: timestamp, processName: proc.name });
+          }
+        } else if (procRules?.highMemoryWarning && proc.memory > procRules.highMemoryWarning) {
+          const alertKey = `process.highmem.${proc.name}.${proc.pid}`;
+          const lastAlert = this.processAlertState.get(alertKey);
+          
+          if (!lastAlert || (timestamp - lastAlert.lastAlertTime > 300000)) {
+            violations.push({
+              rule: {
+                type: "threshold",
+                metric: `process.${proc.pid}.memory`,
+                operator: ">",
+                value: procRules.highMemoryWarning,
+                severity: "warning",
+                message: `Process ${proc.name} (PID ${proc.pid}) using ${proc.memory.toFixed(1)}% memory`,
+              },
+              currentValue: proc.memory,
+              timestamp,
+              metric: `process.${proc.pid}.memory`,
+            });
+            this.processAlertState.set(alertKey, { lastAlertTime: timestamp, processName: proc.name });
+          }
+        }
       }
     }
 
