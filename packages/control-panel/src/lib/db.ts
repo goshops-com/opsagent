@@ -50,8 +50,8 @@ export interface AgentAction {
   description: string;
   status: string;
   result: string | null;
+  output: string | null;
   executed_at: string | null;
-  created_at: string;
   hostname?: string;
 }
 
@@ -89,7 +89,7 @@ export async function getAgentActions(limit = 50): Promise<AgentAction[]> {
     sql: `SELECT aa.*, s.hostname
           FROM agent_actions aa
           LEFT JOIN servers s ON aa.server_id = s.id
-          ORDER BY aa.created_at DESC
+          ORDER BY aa.executed_at DESC
           LIMIT ?`,
     args: [limit],
   });

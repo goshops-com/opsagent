@@ -192,13 +192,13 @@ export default async function Dashboard() {
                     <StatusBadge status={action.status} />
                   </div>
                   <div style={{ fontSize: "13px", marginTop: "4px" }}>{action.description}</div>
-                  {action.result && (
+                  {action.output && (
                     <div style={{ fontSize: "12px", color: "#22c55e", marginTop: "4px" }}>
-                      Result: {action.result}
+                      Result: {action.output}
                     </div>
                   )}
                   <div style={{ fontSize: "12px", color: "#a0a0a0", marginTop: "4px" }}>
-                    {action.hostname} | {formatDate(action.created_at)}
+                    {action.hostname} | {action.executed_at ? formatDate(action.executed_at) : "Pending"}
                   </div>
                 </div>
               ))

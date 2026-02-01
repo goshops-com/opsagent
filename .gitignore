@@ -32,3 +32,4 @@ coverage/
 # Turso local database
 *.db
 *.db-journal
+.playwright-mcp/
