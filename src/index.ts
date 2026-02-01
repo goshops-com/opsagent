@@ -346,8 +346,8 @@ async function main() {
         openIssues = await issueManager.getOpenIssues();
       }
 
-      // Fetch metrics from NetData
-      const metrics = await netdataCollector.fetchMetrics();
+      // Get cached metrics (pre-fetched at startup and updated every 5 seconds)
+      const metrics = netdataCollector.getCachedMetrics();
 
       dashboard!.getWebSocketManager().sendState(socketId, {
         metrics: metrics as any,
@@ -372,6 +372,9 @@ async function main() {
       }
     }, 5000); // Every 5 seconds
   }
+
+  // Pre-fetch metrics so dashboard has data immediately
+  await netdataCollector.fetchMetrics();
 
   // Start collecting NetData alerts
   netdataCollector.start();
