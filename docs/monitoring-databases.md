@@ -199,28 +199,64 @@ Actions:
 
 ## PostgreSQL
 
-### Quick Setup
+### Metrics Collected
+
+NetData collects 70+ PostgreSQL metrics including:
+
+- **Connections**: utilization, usage by state, per-database connections
+- **Transactions**: rate, ratio (commit/rollback), duration
+- **Locks**: held, awaited, utilization
+- **Checkpoints**: rate, timing
+- **Buffers**: I/O rate, allocation, backend fsync
+- **WAL**: I/O rate
+- **Database-specific**: size, cache hit ratio, temp files, deadlocks
+
+### Setup
+
+#### 1. Create a Monitoring User
 
 ```bash
-# Create monitoring user
-sudo -u postgres psql -c "CREATE USER netdata WITH PASSWORD 'password';"
-sudo -u postgres psql -c "GRANT pg_monitor TO netdata;"
+# Connect to PostgreSQL
+sudo -u postgres psql
 
-# Configure NetData
+# Create monitoring user with pg_monitor role
+CREATE USER netdata WITH PASSWORD 'your-secure-password';
+GRANT pg_monitor TO netdata;
+```
+
+#### 2. Configure NetData
+
+```bash
 sudo nano /etc/netdata/go.d/postgres.conf
 ```
 
 ```yaml
 jobs:
-  - name: local
-    dsn: postgresql://netdata:password@localhost:5432/postgres
+  - name: local_postgres
+    dsn: "postgresql://netdata:your-secure-password@localhost:5432/postgres?sslmode=disable"
+    collect_databases_matching: "*"
 ```
 
-### Recommended Alerts
+For multiple databases or remote servers:
 
 ```yaml
-# /etc/netdata/health.d/postgres.conf
+jobs:
+  - name: production_db
+    dsn: "postgresql://netdata:password@db.example.com:5432/production"
+    collect_databases_matching: "*"
 
+  - name: analytics_db
+    dsn: "postgresql://netdata:password@analytics.example.com:5432/analytics"
+```
+
+#### 3. Create Custom Alerts
+
+```bash
+sudo nano /etc/netdata/health.d/postgres.conf
+```
+
+```yaml
+# Connection utilization
 template: postgres_connections_high
       on: postgres.connections_utilization
   lookup: average -1m unaligned
@@ -229,23 +265,99 @@ template: postgres_connections_high
     warn: $this > 70
     crit: $this > 90
     info: PostgreSQL connection utilization is high ($this%)
+      to: sysadmin
 
+# Transaction rate spike
+template: postgres_transactions_high
+      on: postgres.db_transactions_rate
+  lookup: average -1m unaligned
+   units: transactions/s
+   every: 30s
+    warn: $this > 1000
+    crit: $this > 5000
+    info: PostgreSQL transaction rate is high ($this txn/s)
+      to: sysadmin
+
+# Deadlock detection
 template: postgres_deadlocks
-      on: postgres.deadlocks_rate
+      on: postgres.db_deadlocks_rate
   lookup: sum -5m unaligned
    units: deadlocks
    every: 1m
     warn: $this > 0
     info: PostgreSQL deadlocks detected ($this in last 5 min)
+      to: sysadmin
 
-template: postgres_replication_lag
-      on: postgres.replication_slot_files
+# Lock contention
+template: postgres_locks_high
+      on: postgres.locks_utilization
   lookup: average -1m unaligned
-   units: files
+   units: %
    every: 30s
-    warn: $this > 100
-    crit: $this > 1000
-    info: PostgreSQL replication lag is high ($this WAL files)
+    warn: $this > 50
+    crit: $this > 80
+    info: PostgreSQL lock utilization is high ($this%)
+      to: sysadent
+
+# Checkpoint frequency
+template: postgres_checkpoints_high
+      on: postgres.checkpoints_rate
+  lookup: average -5m unaligned
+   units: checkpoints/s
+   every: 1m
+    warn: $this > 0.1
+    info: PostgreSQL checkpoint rate is high ($this/s)
+      to: sysadmin
+
+# Cache hit ratio (per database)
+template: postgres_cache_miss_high
+      on: postgres.db_cache_io_ratio
+  lookup: average -5m unaligned
+   units: %
+   every: 1m
+    warn: $this < 90
+    crit: $this < 80
+    info: PostgreSQL cache hit ratio is low ($this%)
+      to: sysadmin
+```
+
+#### 4. Reload and Verify
+
+```bash
+# Reload health configuration
+sudo netdatacli reload-health
+
+# Check metrics are being collected
+curl -s "http://localhost:19999/api/v1/charts" | grep postgres
+
+# Check alerts
+curl -s "http://localhost:19999/api/v1/alarms" | grep postgres
+```
+
+### Example OpsAgent Analysis
+
+When a PostgreSQL alert fires, OpsAgent provides analysis like:
+
+```
+Alert: PostgreSQL connection utilization is high (85%)
+
+Analysis: The PostgreSQL server is nearing its connection limit. This could
+indicate:
+- Application connection pool exhaustion
+- Long-running queries holding connections
+- Connection leak in application code
+- Increased traffic beyond normal capacity
+
+Recommendations:
+1. Check active connections: SELECT * FROM pg_stat_activity;
+2. Identify long-running queries: SELECT pid, now() - pg_stat_activity.query_start
+   AS duration, query FROM pg_stat_activity WHERE state != 'idle';
+3. Review connection pool settings (max_connections, pool_size)
+4. Consider using PgBouncer for connection pooling
+
+Actions:
+- [notify_human] Alert DBA about connection pressure
+- [log_analysis] Check PostgreSQL logs for connection errors
 ```
 
 ## Redis
