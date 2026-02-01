@@ -1,7 +1,7 @@
 {
   "name": "opsagent",
   "version": "1.0.0",
-  "description": "AI-powered system monitoring with automated remediation",
+  "description": "AI-powered system monitoring with automated remediation (powered by NetData)",
   "main": "src/index.ts",
   "type": "module",
   "workspaces": [
@@ -12,11 +12,8 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "dev:netdata": "bun run src/index-netdata.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --minify",
-    "build:netdata": "bun build src/index-netdata.ts --outdir dist --target bun --minify",
     "start": "bun run src/index.ts",
-    "start:netdata": "bun run src/index-netdata.ts",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "daemon:start": "pm2 start ecosystem.config.cjs",
@@ -24,9 +21,9 @@
     "daemon:restart": "pm2 restart opsagent",
     "daemon:status": "pm2 status opsagent",
     "daemon:logs": "pm2 logs opsagent",
-    "docker:netdata": "docker compose -f docker-compose.netdata.yml up -d",
-    "docker:netdata:down": "docker compose -f docker-compose.netdata.yml down",
-    "docker:netdata:logs": "docker compose -f docker-compose.netdata.yml logs -f",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
     "postinstall": "mkdir -p logs",
     "panel": "bun run --cwd packages/control-panel dev",
     "panel:build": "bun run --cwd packages/control-panel build",
@@ -42,7 +39,8 @@
     "agent",
     "devops",
     "automation",
-    "remediation"
+    "remediation",
+    "netdata"
   ],
   "author": "",
   "license": "MIT",
@@ -59,8 +57,7 @@
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
     "js-yaml": "^4.1.0",
-    "socket.io": "^4.8.0",
-    "systeminformation": "^5.23.0"
+    "socket.io": "^4.8.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

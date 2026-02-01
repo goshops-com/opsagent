@@ -1,28 +1,40 @@
 import "dotenv/config";
-import { loadConfig } from "./config/loader.js";
-import { MetricsCollector } from "./collector/index.js";
-import { RuleEngine } from "./rules/engine.js";
+import { loadNetDataConfig, substituteEnvVars } from "./config/netdata-loader.js";
+import { NetDataAlertCollector, convertNetDataAlertToOpsAgentAlert } from "./collector/netdata.js";
 import { AlertManager } from "./alerts/manager.js";
 import { AIAgentInterface } from "./agent/interface.js";
 import { DashboardServer } from "./dashboard/server.js";
 import { DiscordNotifier } from "./notifications/discord.js";
 import { createBackend, type Backend } from "./api/backend.js";
-import type { SystemMetrics } from "./collector/metrics.js";
+import { IssueManager } from "./db/issue-manager.js";
+import { getPermissions, canExecuteAction, shouldAutoExecute } from "./agent/permissions.js";
 
 async function main() {
-  console.log("OpsAgent starting...\n");
+  console.log("OpsAgent with NetData Integration starting...\n");
 
   // Load configuration
-  const config = loadConfig();
+  const config = substituteEnvVars(loadNetDataConfig());
   console.log("Configuration loaded");
+  console.log(`NetData URL: ${config.netdata.url}`);
+  console.log(`Poll interval: ${config.netdata.pollInterval}s`);
 
   // Initialize backend (Control Panel API or Direct Database)
   let backend: Backend | null = null;
+  let issueManager: IssueManager | null = null;
+
   try {
     backend = await createBackend();
     if (backend) {
       const info = backend.getServerInfo();
       console.log(`Agent registered: ${info.hostname} (${backend.getServerId()})`);
+
+      // Issue manager only works with direct database for now
+      if (process.env.TURSO_DATABASE_URL && !process.env.CONTROL_PANEL_URL) {
+        const { Database } = await import("./db/client.js");
+        const db = new Database();
+        await db.initialize();
+        issueManager = new IssueManager(db, db.getServerId());
+      }
     }
   } catch (error) {
     console.error("[Backend] Failed to initialize:", error);
@@ -30,18 +42,27 @@ async function main() {
     backend = null;
   }
 
+  // Initialize permissions
+  const permissions = getPermissions(config.opsagent.permissionLevel || "limited");
+  console.log(`Agent permission level: ${permissions.level}`);
+  console.log(`Auto-remediate: ${permissions.autoRemediate}`);
+  console.log(`Risky actions require approval: ${permissions.riskyActionsRequireApproval}`);
+
   // Initialize components
-  const collector = new MetricsCollector(config.collector.interval);
-  const ruleEngine = new RuleEngine();
   const alertManager = new AlertManager(
-    config.alerts.cooldown,
-    config.alerts.maxHistory
+    300000, // 5 minute cooldown
+    1000   // max history
   );
+  
   const agent = new AIAgentInterface(
-    config.agent.model,
-    config.agent.autoRemediate,
-    config.agent.enabled
+    config.opsagent.model,
+    permissions.autoRemediate,
+    true    // always enabled with NetData
   );
+
+  // Track actions per hour
+  let actionsExecutedThisHour = 0;
+  let actionsResetTime = Date.now() + 3600000; // 1 hour from now
 
   // Initialize Discord notifier
   const discord = new DiscordNotifier(
@@ -53,12 +74,8 @@ async function main() {
     console.log("Discord notifications enabled");
   }
 
-  // Load rules from config
-  ruleEngine.loadRulesFromConfig(config);
-
-  // Store latest metrics for dashboard
-  let latestMetrics: SystemMetrics | null = null;
-  let metricsCount = 0;
+  // Initialize NetData alert collector
+  const netdataCollector = new NetDataAlertCollector(config.netdata);
 
   // Initialize dashboard if enabled
   let dashboard: DashboardServer | null = null;
@@ -81,160 +98,288 @@ async function main() {
     await dashboard.start();
   }
 
-  // Heartbeat interval for database
-  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  if (backend) {
-    heartbeatInterval = setInterval(() => {
-      backend!.heartbeat().catch((e) => console.error("[Backend] Heartbeat failed:", e));
-    }, 60000); // Every minute
-  }
-
-  // Set up event handlers
-  collector.on("metrics", async (metrics: SystemMetrics) => {
-    latestMetrics = metrics;
-    metricsCount++;
-
-    // Broadcast to dashboard
-    if (dashboard) {
-      dashboard.getWebSocketManager().broadcastMetrics(metrics);
+  // Reset actions counter every hour
+  setInterval(() => {
+    const now = Date.now();
+    if (now >= actionsResetTime) {
+      actionsExecutedThisHour = 0;
+      actionsResetTime = now + 3600000;
+      console.log("[Permissions] Hourly action counter reset");
     }
+  }, 60000); // Check every minute
 
-    // Save metrics snapshot every 10 collections (~30s with test config, ~50s with default)
-    if (backend && metricsCount % 10 === 0) {
-      backend.saveMetricsSnapshot(metrics).catch((e) =>
-        console.error("[Backend] Failed to save metrics snapshot:", e)
-      );
-    }
+  // Set up NetData alert handlers
+  netdataCollector.on("alert", async (event) => {
+    const { type, alert, previous } = event;
 
-    // Evaluate rules deterministically
-    const violations = ruleEngine.evaluate(metrics);
+    // Convert NetData alert to OpsAgent format
+    const opsAgentAlert = convertNetDataAlertToOpsAgentAlert(alert);
 
-    // Process violations into alerts
-    const newAlerts = alertManager.processViolations(violations);
+    switch (type) {
+      case "new":
+        console.log(`[NetData Alert] ${alert.severity.toUpperCase()}: ${alert.name} (${alert.value.toFixed(2)}${alert.units})`);
+        
+        // Add to alert manager
+        alertManager.addAlert(opsAgentAlert);
 
-    // Handle new alerts with AI agent
-    for (const alert of newAlerts) {
-      console.log(
-        `[Alert] ${alert.severity.toUpperCase()}: ${alert.message} (${alert.metric}: ${alert.currentValue.toFixed(2)})`
-      );
+        // Create or update issue in database
+        let issue = null;
+        let isNewIssue = false;
+        
+        if (issueManager) {
+          const result = await issueManager.handleAlert({
+            id: alert.id,
+            name: alert.name,
+            context: alert.context,
+            chart: alert.chart,
+            severity: alert.severity,
+            message: alert.info || alert.name,
+            value: alert.value,
+            timestamp: Date.now(),
+            source: "netdata",
+          });
+          
+          issue = result.issue;
+          isNewIssue = result.isNew;
+        }
 
-      // Save alert to database
-      if (backend) {
-        backend.saveAlert(alert).catch((e) => console.error("[Backend] Failed to save alert:", e));
-      }
-
-      // Send critical alerts to Discord immediately
-      if (alert.severity === "critical" && config.discord.notifyOnCritical) {
-        await discord.sendAlert(alert);
-      }
-
-      // Send to AI agent for analysis and decision
-      const result = await agent.handleAlert(
-        alert,
-        metrics,
-        alertManager.getAlertHistory()
-      );
-
-      if (result) {
-        alertManager.updateAlertWithAgentResponse(
-          alert.id,
-          result.response?.analysis || result.rawResponse,
-          result.executionResults.map(
-            (r) => `${r.action.action}: ${r.success ? "success" : "failed"}`
-          )
+        // Send to AI agent for analysis
+        const result = await agent.handleAlert(
+          opsAgentAlert,
+          {}, // No direct metrics, alert contains the value
+          alertManager.getAlertHistory()
         );
 
-        // Save agent response to database
-        if (backend) {
-          backend.saveAgentResponse(alert, result, config.agent.model).catch((e) =>
-            console.error("[Backend] Failed to save agent response:", e)
-          );
-        }
-
-        // Handle agent's decision to notify humans
-        if (result.response?.requiresHumanAttention) {
-          const pendingActions = result.executionResults
-            .filter((r) => r.skipped)
-            .map((r) => `${r.action.action}: ${r.action.description}`);
-
-          await discord.sendHumanInterventionRequest(
-            alert,
-            result.response.humanNotificationReason || result.response.analysis,
-            pendingActions
-          );
-        }
-
-        // Handle explicit notify_human actions from the agent
-        for (const execResult of result.executionResults) {
-          if (execResult.action.action === "notify_human" && execResult.success) {
-            await discord.sendCustomMessage(
-              `Alert: ${alert.message}`,
-              execResult.action.message || result.response?.analysis || "Agent requested human attention",
-              alert.severity === "critical"
+        if (result && result.response) {
+          // Record analysis in issue
+          if (issueManager && issue) {
+            await issueManager.recordAnalysis(
+              issue.id,
+              result.response.analysis,
+              result.response.canAutoRemediate,
+              result.response.requiresHumanAttention
             );
           }
-        }
 
-        // Send agent analysis to Discord if configured
-        if (config.discord.notifyOnAgentAction && result.executionResults.length > 0) {
-          await discord.sendAgentAnalysis(alert, result);
+          // Check if we should auto-execute
+          const autoExecute = shouldAutoExecute(permissions, result.response.canAutoRemediate);
+          
+          // Execute actions based on permissions
+          for (const actionResult of result.executionResults) {
+            const permissionCheck = canExecuteAction(
+              permissions,
+              actionResult.action.action,
+              actionResult.action.risk,
+              actionsExecutedThisHour
+            );
+
+            if (!permissionCheck.allowed) {
+              console.log(`[Permissions] Skipped action '${actionResult.action.action}': ${permissionCheck.reason}`);
+              
+              // Record the skip in the issue
+              if (issueManager && issue) {
+                await issueManager.recordAction(
+                  issue.id,
+                  actionResult.action.action,
+                  `Skipped: ${permissionCheck.reason}`,
+                  false,
+                  undefined,
+                  permissionCheck.reason
+                );
+              }
+              
+              // Send Discord notification about required approval
+              if (actionResult.action.risk === "medium" || actionResult.action.risk === "high") {
+                await discord.sendCustomMessage(
+                  `⚠️ Action Requires Approval`,
+                  `Action: ${actionResult.action.action}\nRisk: ${actionResult.action.risk}\nReason: ${permissionCheck.reason}`,
+                  true
+                );
+              }
+              
+              continue;
+            }
+
+            // Execute the action
+            console.log(`[Agent] Executing action: ${actionResult.action.action}`);
+            
+            // Record the action execution
+            if (issueManager && issue) {
+              await issueManager.recordAction(
+                issue.id,
+                actionResult.action.action,
+                actionResult.action.description,
+                actionResult.success,
+                actionResult.output,
+                actionResult.error
+              );
+            }
+
+            // Increment action counter
+            if (actionResult.success) {
+              actionsExecutedThisHour++;
+            }
+
+            // Handle notify_human action
+            if (actionResult.action.action === "notify_human" && actionResult.success) {
+              await discord.sendCustomMessage(
+                `🤖 Agent Alert: ${opsAgentAlert.message}`,
+                actionResult.action.message || result.response.analysis || "Agent requested human attention",
+                opsAgentAlert.severity === "critical"
+              );
+            }
+          }
+
+          // Handle human intervention request
+          if (result.response.requiresHumanAttention) {
+            const pendingActions = result.executionResults
+              .filter((r) => r.skipped || !r.success)
+              .map((r) => `${r.action.action}: ${r.action.description}`);
+
+            await discord.sendHumanInterventionRequest(
+              opsAgentAlert,
+              result.response.humanNotificationReason || result.response.analysis,
+              pendingActions
+            );
+
+            // Update issue status to investigating
+            if (issueManager && issue) {
+              await issueManager.updateStatus(issue.id, "investigating", "Requires human attention");
+            }
+          }
+
+          // Send agent analysis to Discord if configured
+          if (config.discord.notifyOnAgentAction && result.executionResults.length > 0) {
+            await discord.sendAgentAnalysis(opsAgentAlert, result);
+          }
+
+          // Broadcast to dashboard
+          if (dashboard) {
+            dashboard.getWebSocketManager().broadcastAgentResult(result);
+          }
         }
 
         // Broadcast to dashboard
         if (dashboard) {
-          dashboard.getWebSocketManager().broadcastAgentResult(result);
+          dashboard.getWebSocketManager().broadcastAlert({
+            type: "new",
+            alert: opsAgentAlert,
+            issue: issue ? {
+              id: issue.id,
+              isNew: isNewIssue,
+              count: issue.alertCount,
+            } : null,
+          });
         }
-      }
+        break;
+
+      case "changed":
+        console.log(`[NetData Alert] State changed: ${alert.name} (${previous?.status} -> ${alert.status})`);
+        
+        // Update in alert manager
+        alertManager.updateAlert(opsAgentAlert.id, opsAgentAlert);
+        
+        // Add comment to existing issue
+        if (issueManager) {
+          const fingerprint = `${alert.name}:${alert.context}:${alert.chart}`;
+          const openIssues = await issueManager.getOpenIssues();
+          const matchingIssue = openIssues.find(i => i.alertFingerprint === fingerprint);
+          
+          if (matchingIssue) {
+            await issueManager.addComment(matchingIssue.id, {
+              authorType: "agent",
+              commentType: "note",
+              content: `Alert state changed: ${previous?.status} -> ${alert.status}`,
+              metadata: { previousStatus: previous?.status, newStatus: alert.status },
+            });
+          }
+        }
+        break;
+
+      case "cleared":
+        console.log(`[NetData Alert] Cleared: ${alert.name}`);
+        
+        // Resolve in alert manager
+        alertManager.resolveAlert(opsAgentAlert.id);
+
+        // Resolve the issue
+        if (issueManager) {
+          const fingerprint = `${alert.name}:${alert.context}:${alert.chart}`;
+          const openIssues = await issueManager.getOpenIssues();
+          const matchingIssue = openIssues.find(i => i.alertFingerprint === fingerprint);
+          
+          if (matchingIssue) {
+            await issueManager.resolveIssue(matchingIssue.id, "NetData alert cleared");
+          }
+        }
+
+        // Send Discord notification
+        await discord.sendResolution(opsAgentAlert, "NetData alert has cleared");
+
+        // Broadcast to dashboard
+        if (dashboard) {
+          dashboard.getWebSocketManager().broadcastAlert({
+            type: "resolved",
+            alert: opsAgentAlert,
+          });
+        }
+        break;
     }
   });
 
-  collector.on("error", (error) => {
-    console.error("[Collector] Error:", error);
+  netdataCollector.on("error", (error) => {
+    console.error("[NetData Collector] Error:", error);
   });
 
-  alertManager.on("alert", async (event) => {
-    if (dashboard) {
-      dashboard.getWebSocketManager().broadcastAlert(event);
+  netdataCollector.on("check", ({ timestamp, alertCount }) => {
+    if (alertCount > 0) {
+      console.log(`[NetData] ${alertCount} active alerts at ${new Date(timestamp).toISOString()}`);
     }
-
-    if (event.type === "resolved") {
-      console.log(`[Alert] Resolved: ${event.alert.message}`);
-
-      // Update alert in database
-      if (backend) {
-        backend.resolveAlert(event.alert.id).catch((e) =>
-          console.error("[Backend] Failed to resolve alert:", e)
-        );
-      }
-
-      await discord.sendResolution(event.alert, "Alert condition has returned to normal.");
-    }
-  });
-
-  agent.on("processing", ({ alertId, status }) => {
-    console.log(`[Agent] Processing alert ${alertId}: ${status}`);
-  });
-
-  agent.on("error", ({ alertId, error }) => {
-    console.error(`[Agent] Error processing alert ${alertId}:`, error);
   });
 
   // Handle state requests from dashboard
   if (dashboard) {
-    dashboard.getWebSocketManager().on("state-requested", (socketId: string) => {
+    dashboard.getWebSocketManager().on("state-requested", async (socketId: string) => {
+      let openIssues = [];
+      if (issueManager) {
+        openIssues = await issueManager.getOpenIssues();
+      }
+      
       dashboard!.getWebSocketManager().sendState(socketId, {
-        metrics: latestMetrics,
+        metrics: null,
         alerts: alertManager.getActiveAlerts(),
         agentResults: agent.getResults(),
+        netdataAlerts: netdataCollector.getKnownAlerts(),
+        openIssues,
+        permissions: {
+          level: permissions.level,
+          autoRemediate: permissions.autoRemediate,
+          actionsThisHour: actionsExecutedThisHour,
+          maxActionsPerHour: permissions.maxActionsPerHour,
+        },
       });
     });
   }
 
-  // Start collecting metrics
-  collector.start();
+  // Start collecting NetData alerts
+  netdataCollector.start();
+
+  // Heartbeat for backend
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  if (backend) {
+    heartbeatInterval = setInterval(() => {
+      backend!.heartbeat().catch((e) => console.error("[Backend] Heartbeat failed:", e));
+    }, 60000);
+  }
 
   const serverInfo = backend ? ` [${backend.getServerInfo().hostname}]` : "";
-  console.log(`\nOpsAgent${serverInfo} running. Press Ctrl+C to stop.\n`);
+  console.log(`\nOpsAgent${serverInfo} running with NetData integration.`);
+  console.log(`Permission level: ${permissions.level}`);
+  console.log(`NetData Dashboard: ${config.netdata.url}`);
+  if (dashboard) {
+    console.log(`OpsAgent Dashboard: http://localhost:${config.dashboard.port}`);
+  }
+  console.log(`Press Ctrl+C to stop.\n`);
 
   // Graceful shutdown
   const shutdown = async () => {
@@ -244,7 +389,7 @@ async function main() {
       clearInterval(heartbeatInterval);
     }
 
-    collector.stop();
+    netdataCollector.stop();
 
     if (dashboard) {
       await dashboard.stop();

@@ -201,6 +201,80 @@ install_pm2() {
 }
 
 # =============================================================================
+# NetData Installation
+# =============================================================================
+
+check_netdata_running() {
+    if curl -fs http://localhost:19999/api/v1/info &> /dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+is_netdata_installed() {
+    if command -v netdata &> /dev/null; then
+        return 0
+    fi
+    # Also check common install locations
+    if [[ -f "$HOME/.netdata/netdata-installer.sh" ]] || [[ -f "/usr/sbin/netdata" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+install_netdata() {
+    step "Installing NetData (metrics collector)"
+
+    if is_netdata_installed; then
+        if check_netdata_running; then
+            local version=$(curl -fs http://localhost:19999/api/v1/info 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+            success "NetData is already installed and running (v${version})"
+        else
+            success "NetData is already installed"
+            info "Start it with: sudo systemctl start netdata"
+        fi
+        return 0
+    fi
+
+    info "NetData provides real-time system metrics and alerting"
+    info "Installing from https://get.netdata.cloud..."
+    echo ""
+
+    # Determine install mode based on permissions
+    local netdata_args="--no-updates --stable-channel --disable-telemetry"
+
+    if [[ "$EUID" -ne 0 ]] && ! command -v sudo &> /dev/null; then
+        warn "Installing NetData in user mode (no root access)"
+        netdata_args="$netdata_args --dont-wait"
+    fi
+
+    # Install NetData using the official installer
+    if curl -fsSL https://get.netdata.cloud/kickstart.sh | bash -s -- $netdata_args; then
+        success "NetData installed successfully"
+
+        # Try to start NetData if systemctl is available
+        if command -v systemctl &> /dev/null; then
+            info "Starting NetData service..."
+            sudo systemctl start netdata 2>/dev/null || true
+            sudo systemctl enable netdata 2>/dev/null || true
+        fi
+
+        # Verify it's running
+        sleep 2
+        if check_netdata_running; then
+            local version=$(curl -fs http://localhost:19999/api/v1/info 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+            success "NetData is running (v${version})"
+            info "Dashboard: http://localhost:19999"
+        else
+            warn "NetData installed but not running yet"
+            info "Start it manually: sudo systemctl start netdata"
+        fi
+    else
+        warn "NetData installation failed - you can install it later with: opsagent setup"
+    fi
+}
+
+# =============================================================================
 # OpsAgent Installation
 # =============================================================================
 
@@ -436,8 +510,9 @@ print_success() {
         echo -e "  ${CYAN}# View logs${NC}"
         echo -e "  opsagent logs"
         echo ""
-        echo -e "  ${CYAN}# Agent dashboard${NC}"
-        echo -e "  open http://localhost:3001"
+        echo -e "${BOLD}Dashboards:${NC}"
+        echo -e "  ${CYAN}NetData:${NC}   http://localhost:19999  ${DIM}(system metrics)${NC}"
+        echo -e "  ${CYAN}OpsAgent:${NC}  http://localhost:3001   ${DIM}(AI analysis)${NC}"
         echo ""
     fi
 
@@ -495,6 +570,12 @@ main() {
     install_bun
     install_pm2
     install_opsagent
+
+    # Install NetData for agent or both mode
+    if [[ "$INSTALL_MODE" == "agent" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+        install_netdata
+    fi
+
     setup_config
     setup_shell
 
