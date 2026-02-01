@@ -19,8 +19,9 @@ set -euo pipefail
 
 INSTALL_DIR="${OPSAGENT_DIR:-$HOME/.opsagent}"
 BRANCH="${OPSAGENT_BRANCH:-main}"
-REPO_URL="https://github.com/sjcotto/opsagent.git"
+REPO_URL="https://github.com/goshops-com/opsagent.git"
 VERSION="1.0.0"
+GENERATED_PASSWORD=""
 
 # =============================================================================
 # Colors and Output Helpers
@@ -92,6 +93,19 @@ error() {
 
 step() {
     echo -e "\n${BOLD}${ARROW} $1${NC}"
+}
+
+# Generate a secure random password
+generate_password() {
+    # Generate 24-character alphanumeric password
+    if command -v openssl &> /dev/null; then
+        openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 24
+    elif [[ -f /dev/urandom ]]; then
+        cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 24
+    else
+        # Fallback: use date and random
+        echo "$(date +%s%N)$RANDOM" | sha256sum | head -c 24
+    fi
 }
 
 # =============================================================================
@@ -389,7 +403,7 @@ setup_config() {
             echo ""
         fi
 
-        # For agent mode: ask for Control Panel URL
+        # For agent mode: ask for Control Panel URL and password
         if [[ "$INSTALL_MODE" == "agent" ]]; then
             echo -e "${BOLD}Control Panel URL${NC} ${DIM}(optional, to connect to a central dashboard)${NC}"
             echo -e "${DIM}Example: http://your-server:3002${NC}"
@@ -399,7 +413,22 @@ setup_config() {
                 sed_inplace "s|# CONTROL_PANEL_URL=.*|CONTROL_PANEL_URL=${panel_url}|" "$env_file"
                 sed_inplace "s|^TURSO_DATABASE_URL=|# TURSO_DATABASE_URL=|" "$env_file"
                 sed_inplace "s|^TURSO_AUTH_TOKEN=|# TURSO_AUTH_TOKEN=|" "$env_file"
-                success "Agent will connect to control panel at ${panel_url}"
+
+                # Ask for Control Panel password
+                echo ""
+                echo -e "${BOLD}Control Panel Password${NC} ${DIM}(required to authenticate with the control panel)${NC}"
+                echo -e "${DIM}This was shown when you installed the control panel${NC}"
+                read -sp "  Password: " panel_password
+                echo ""
+                if [[ -n "$panel_password" ]]; then
+                    # Add password to env file
+                    echo "" >> "$env_file"
+                    echo "# Control Panel authentication" >> "$env_file"
+                    echo "CONTROL_PANEL_PASSWORD=${panel_password}" >> "$env_file"
+                    success "Agent will connect to control panel at ${panel_url}"
+                else
+                    warn "No password provided - agent may not be able to authenticate"
+                fi
             else
                 echo ""
                 # If no control panel, ask for Turso for direct DB mode
@@ -417,8 +446,14 @@ setup_config() {
             echo ""
         fi
 
-        # For panel or both: ask for Turso (required)
+        # For panel or both: generate password and ask for Turso
         if [[ "$INSTALL_MODE" == "panel" ]] || [[ "$INSTALL_MODE" == "both" ]]; then
+            # Generate control panel password
+            GENERATED_PASSWORD=$(generate_password)
+            echo "" >> "$env_file"
+            echo "# Control Panel authentication" >> "$env_file"
+            echo "CONTROL_PANEL_PASSWORD=${GENERATED_PASSWORD}" >> "$env_file"
+
             echo -e "${BOLD}Turso Database${NC} ${DIM}(required for control panel)${NC}"
             echo -e "${DIM}Create a database at: https://turso.tech${NC}"
             read -p "  Database URL: " turso_url
@@ -525,11 +560,28 @@ print_success() {
         echo -e "  ${CYAN}# Control panel URL${NC}"
         echo -e "  open http://localhost:3002"
         echo ""
+
+        # Show generated password
+        if [[ -n "$GENERATED_PASSWORD" ]]; then
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${BOLD}${YELLOW}  IMPORTANT: Save your Control Panel password!${NC}"
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo -e "  ${BOLD}Password:${NC} ${GREEN}${GENERATED_PASSWORD}${NC}"
+            echo ""
+            echo -e "  ${DIM}You'll need this password to:${NC}"
+            echo -e "  ${DIM}  - Access the control panel web UI${NC}"
+            echo -e "  ${DIM}  - Connect agents to this control panel${NC}"
+            echo ""
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+        fi
+
         if [[ "$INSTALL_MODE" == "panel" ]]; then
             echo -e "${BOLD}Connect agents:${NC}"
             echo -e "  ${DIM}On each server you want to monitor, install the agent:${NC}"
-            echo -e "  OPSAGENT_MODE=agent curl -fsSL https://raw.githubusercontent.com/sjcotto/opsagent/main/install.sh | bash"
-            echo -e "  ${DIM}Then set CONTROL_PANEL_URL=http://$(hostname):3002 in the agent's .env${NC}"
+            echo -e "  OPSAGENT_MODE=agent curl -fsSL https://raw.githubusercontent.com/goshops-com/opsagent/main/install.sh | bash"
+            echo -e "  ${DIM}When prompted, enter the control panel URL and password shown above${NC}"
             echo ""
         fi
     fi

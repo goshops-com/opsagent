@@ -61,7 +61,7 @@ export async function createBackend(): Promise<Backend | null> {
     const { ControlPanelClient } = await import("./control-panel-client.js");
     const client = new ControlPanelClient({
       url: controlPanelUrl,
-      apiKey: process.env.CONTROL_PANEL_API_KEY,
+      apiKey: process.env.CONTROL_PANEL_PASSWORD,
     });
 
     // Check if control panel is reachable
