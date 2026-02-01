@@ -1,4 +1,4 @@
-import { getIssueById, getIssueComments, updateIssueStatus, addIssueComment, type Issue, type IssueComment } from "@/lib/db";
+import { getIssueById, getIssueComments, updateIssueStatus, addIssueComment, type IssueComment } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -10,11 +10,11 @@ async function updateStatus(formData: FormData) {
   "use server";
   const issueId = formData.get("issueId") as string;
   const status = formData.get("status") as string;
-  
+
   if (issueId && status) {
     await updateIssueStatus(issueId, status);
   }
-  
+
   redirect(`/issues/${issueId}`);
 }
 
@@ -23,79 +23,107 @@ async function addComment(formData: FormData) {
   const issueId = formData.get("issueId") as string;
   const content = formData.get("content") as string;
   const authorName = formData.get("authorName") as string;
-  
+  const commentType = formData.get("commentType") as string || "note";
+
   if (issueId && content) {
-    await addIssueComment(issueId, content, authorName || undefined, "note");
+    await addIssueComment(issueId, content, authorName || undefined, commentType as IssueComment["comment_type"]);
   }
-  
+
   redirect(`/issues/${issueId}`);
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    open: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-    investigating: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    resolved: "bg-green-500/20 text-green-400 border-green-500/30",
-    closed: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  const colors: Record<string, { bg: string; color: string }> = {
+    open: { bg: "#f59e0b20", color: "#f59e0b" },
+    investigating: { bg: "#3b82f620", color: "#3b82f6" },
+    resolved: { bg: "#22c55e20", color: "#22c55e" },
+    closed: { bg: "#6b728020", color: "#6b7280" },
   };
-  
+  const style = colors[status] || colors.closed;
+
   return (
-    <span className={`px-3 py-1 rounded text-sm font-medium border ${colors[status] || colors.closed}`}>
+    <span style={{
+      padding: "6px 12px",
+      borderRadius: "4px",
+      fontSize: "13px",
+      fontWeight: 500,
+      background: style.bg,
+      color: style.color,
+    }}>
       {status}
     </span>
   );
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const colors: Record<string, string> = {
-    critical: "bg-red-500/20 text-red-400 border-red-500/30",
-    warning: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-    info: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  const colors: Record<string, { bg: string; color: string }> = {
+    critical: { bg: "#ef444420", color: "#ef4444" },
+    warning: { bg: "#f59e0b20", color: "#f59e0b" },
+    info: { bg: "#3b82f620", color: "#3b82f6" },
   };
-  
+  const style = colors[severity] || colors.info;
+
   return (
-    <span className={`px-3 py-1 rounded text-sm font-medium border ${colors[severity] || colors.info}`}>
+    <span style={{
+      padding: "6px 12px",
+      borderRadius: "4px",
+      fontSize: "13px",
+      fontWeight: 500,
+      background: style.bg,
+      color: style.color,
+    }}>
       {severity}
     </span>
   );
 }
 
 function CommentCard({ comment }: { comment: IssueComment }) {
-  const typeLabels: Record<string, string> = {
-    analysis: "🤖 AI Analysis",
-    action: "⚡ Action",
-    status_change: "📝 Status Change",
-    alert_fired: "🔔 Alert",
-    note: "💬 Note",
+  const typeConfig: Record<string, { label: string; borderColor: string; icon: string }> = {
+    analysis: { label: "AI Analysis", borderColor: "#a855f7", icon: "🤖" },
+    action: { label: "Action Taken", borderColor: "#22c55e", icon: "⚡" },
+    status_change: { label: "Status Change", borderColor: "#3b82f6", icon: "📝" },
+    alert_fired: { label: "Alert Fired", borderColor: "#f59e0b", icon: "🔔" },
+    note: { label: "Note", borderColor: "#6b7280", icon: "💬" },
+    feedback: { label: "Human Feedback", borderColor: "#ec4899", icon: "👤" },
   };
-  
-  const typeColors: Record<string, string> = {
-    analysis: "border-l-purple-500",
-    action: "border-l-green-500",
-    status_change: "border-l-blue-500",
-    alert_fired: "border-l-yellow-500",
-    note: "border-l-gray-500",
-  };
-  
+
+  const config = typeConfig[comment.comment_type] || typeConfig.note;
+
   return (
-    <div className={`bg-[#1a1a1a] p-4 rounded-lg border border-[#2a2a2a] border-l-4 ${typeColors[comment.comment_type]} mb-4`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[#fafafa]">
-            {typeLabels[comment.comment_type] || comment.comment_type}
+    <div style={{
+      background: "#1a1a1a",
+      padding: "16px",
+      borderRadius: "8px",
+      border: "1px solid #2a2a2a",
+      borderLeft: `4px solid ${config.borderColor}`,
+      marginBottom: "12px",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "14px", fontWeight: 500 }}>
+            {config.icon} {config.label}
           </span>
-          <span className="text-xs text-[#a0a0a0]">
+          <span style={{ fontSize: "12px", color: "#a0a0a0" }}>
             by {comment.author_type === "agent" ? "AI Agent" : (comment.author_name || "Human")}
           </span>
         </div>
-        <span className="text-xs text-[#a0a0a0]">
+        <span style={{ fontSize: "12px", color: "#a0a0a0" }}>
           {new Date(Number(comment.created_at)).toLocaleString()}
         </span>
       </div>
-      <p className="text-[#fafafa] whitespace-pre-wrap">{comment.content}</p>
+      <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{comment.content}</p>
       {comment.metadata && (
-        <div className="mt-2 text-xs text-[#a0a0a0] bg-[#0a0a0a] p-2 rounded">
-          <code>{JSON.stringify(JSON.parse(comment.metadata), null, 2)}</code>
+        <div style={{
+          marginTop: "12px",
+          fontSize: "12px",
+          color: "#a0a0a0",
+          background: "#0a0a0a",
+          padding: "8px",
+          borderRadius: "4px",
+          fontFamily: "monospace",
+          overflow: "auto",
+        }}>
+          <pre style={{ margin: 0 }}>{JSON.stringify(JSON.parse(comment.metadata), null, 2)}</pre>
         </div>
       )}
     </div>
@@ -112,20 +140,48 @@ export default async function IssueDetailPage({
     getIssueComments(params.id),
   ]);
 
+  const cardStyle = {
+    background: "#141414",
+    border: "1px solid #2a2a2a",
+    borderRadius: "8px",
+    padding: "16px",
+  };
+
+  const inputStyle = {
+    width: "100%",
+    padding: "10px 12px",
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    borderRadius: "6px",
+    color: "#fafafa",
+    fontSize: "14px",
+  };
+
+  const buttonStyle = {
+    padding: "10px 20px",
+    borderRadius: "6px",
+    fontSize: "14px",
+    fontWeight: 500,
+    cursor: "pointer",
+    border: "none",
+    transition: "all 0.2s",
+  };
+
   if (!issue) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-[#fafafa] p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-[#141414] p-8 rounded-lg border border-[#2a2a2a] text-center">
-            <h1 className="text-2xl font-bold mb-4">Issue Not Found</h1>
-            <p className="text-[#a0a0a0] mb-4">The issue you&apos;re looking for doesn&apos;t exist.</p>
-            <Link
-              href="/issues"
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white transition-colors"
-            >
-              Back to Issues
-            </Link>
-          </div>
+      <div style={{ maxWidth: "900px", margin: "0 auto", padding: "24px" }}>
+        <div style={{ ...cardStyle, textAlign: "center", padding: "48px" }}>
+          <h1 style={{ fontSize: "24px", fontWeight: 600, marginBottom: "16px" }}>Issue Not Found</h1>
+          <p style={{ color: "#a0a0a0", marginBottom: "24px" }}>The issue you&apos;re looking for doesn&apos;t exist.</p>
+          <Link href="/issues" style={{
+            padding: "10px 20px",
+            background: "#3b82f6",
+            borderRadius: "6px",
+            color: "#fff",
+            textDecoration: "none",
+          }}>
+            Back to Issues
+          </Link>
         </div>
       </div>
     );
@@ -136,156 +192,185 @@ export default async function IssueDetailPage({
     : Math.floor((Date.now() - Number(issue.first_seen_at)) / 1000 / 60);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#fafafa] p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/issues"
-              className="px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] rounded-lg border border-[#2a2a2a] transition-colors"
-            >
-              ← Back to Issues
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold">{issue.title}</h1>
-              <p className="text-sm text-[#a0a0a0]">ID: {issue.id}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <StatusBadge status={issue.status} />
-            <SeverityBadge severity={issue.severity} />
+    <div style={{ maxWidth: "900px", margin: "0 auto", padding: "24px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <Link href="/issues" style={{
+            padding: "8px 16px",
+            background: "#1a1a1a",
+            borderRadius: "6px",
+            color: "#fff",
+            textDecoration: "none",
+            border: "1px solid #2a2a2a",
+          }}>
+            ← Back
+          </Link>
+          <div>
+            <h1 style={{ fontSize: "24px", fontWeight: 600, marginBottom: "4px" }}>{issue.title}</h1>
+            <p style={{ fontSize: "12px", color: "#a0a0a0" }}>ID: {issue.id}</p>
           </div>
         </div>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <StatusBadge status={issue.status} />
+          <SeverityBadge severity={issue.severity} />
+        </div>
+      </div>
 
-        {/* Issue Details */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <h3 className="text-sm font-medium text-[#a0a0a0] uppercase tracking-wider mb-3">Details</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#a0a0a0]">Server:</span>
-                <span className="text-[#fafafa]">{issue.hostname || issue.server_id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#a0a0a0]">Source:</span>
-                <span className="text-[#fafafa] capitalize">{issue.source}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#a0a0a0]">Alert Count:</span>
-                <span className="text-[#fafafa]">{issue.alert_count} firings</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#a0a0a0]">Duration:</span>
-                <span className="text-[#fafafa]">{duration} minutes</span>
-              </div>
+      {/* Details Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "24px" }}>
+        <div style={cardStyle}>
+          <h3 style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase", marginBottom: "12px" }}>Details</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#a0a0a0" }}>Server:</span>
+              <span>{issue.hostname || issue.server_id}</span>
             </div>
-          </div>
-
-          <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-            <h3 className="text-sm font-medium text-[#a0a0a0] uppercase tracking-wider mb-3">Timeline</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#a0a0a0]">First Seen:</span>
-                <span className="text-[#fafafa]">
-                  {new Date(Number(issue.first_seen_at)).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#a0a0a0]">Last Seen:</span>
-                <span className="text-[#fafafa]">
-                  {new Date(Number(issue.last_seen_at)).toLocaleString()}
-                </span>
-              </div>
-              {issue.resolved_at && (
-                <div className="flex justify-between">
-                  <span className="text-[#a0a0a0]">Resolved:</span>
-                  <span className="text-green-400">
-                    {new Date(Number(issue.resolved_at)).toLocaleString()}
-                  </span>
-                </div>
-              )}
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#a0a0a0" }}>Source:</span>
+              <span style={{ textTransform: "capitalize" }}>{issue.source}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#a0a0a0" }}>Alert Count:</span>
+              <span>{issue.alert_count} firings</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#a0a0a0" }}>Duration:</span>
+              <span>{duration} minutes</span>
             </div>
           </div>
         </div>
 
-        {/* Description */}
-        <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-          <h3 className="text-sm font-medium text-[#a0a0a0] uppercase tracking-wider mb-2">Description</h3>
-          <p className="text-[#fafafa]">{issue.description || "No description available."}</p>
-        </div>
-
-        {/* Status Management */}
-        <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-          <h3 className="text-sm font-medium text-[#a0a0a0] uppercase tracking-wider mb-4">Change Status</h3>
-          <form action={updateStatus} className="flex items-center gap-4">
-            <input type="hidden" name="issueId" value={issue.id} />
-            <select
-              name="status"
-              className="px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[#fafafa] focus:outline-none focus:border-blue-500"
-              defaultValue={issue.status}
-            >
-              <option value="open">Open</option>
-              <option value="investigating">Investigating</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
-            </select>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-            >
-              Update Status
-            </button>
-          </form>
-        </div>
-
-        {/* Add Comment */}
-        <div className="bg-[#141414] p-4 rounded-lg border border-[#2a2a2a]">
-          <h3 className="text-sm font-medium text-[#a0a0a0] uppercase tracking-wider mb-4">Add Comment</h3>
-          <form action={addComment} className="space-y-4">
-            <input type="hidden" name="issueId" value={issue.id} />
-            <div>
-              <label className="block text-sm text-[#a0a0a0] mb-1">Your Name (optional)</label>
-              <input
-                type="text"
-                name="authorName"
-                placeholder="Control Panel User"
-                className="w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[#fafafa] placeholder-[#666] focus:outline-none focus:border-blue-500"
-              />
+        <div style={cardStyle}>
+          <h3 style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase", marginBottom: "12px" }}>Timeline</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#a0a0a0" }}>First Seen:</span>
+              <span>{new Date(Number(issue.first_seen_at)).toLocaleString()}</span>
             </div>
-            <div>
-              <label className="block text-sm text-[#a0a0a0] mb-1">Comment</label>
-              <textarea
-                name="content"
-                rows={3}
-                placeholder="Add a note about this issue..."
-                required
-                className="w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-[#fafafa] placeholder-[#666] focus:outline-none focus:border-blue-500"
-              />
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#a0a0a0" }}>Last Seen:</span>
+              <span>{new Date(Number(issue.last_seen_at)).toLocaleString()}</span>
             </div>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
-            >
-              Add Comment
-            </button>
-          </form>
-        </div>
-
-        {/* Comments History */}
-        <div>
-          <h3 className="text-lg font-medium mb-4">Activity History ({comments.length} comments)</h3>
-          <div className="space-y-4">
-            {comments.length === 0 ? (
-              <div className="bg-[#141414] p-6 rounded-lg border border-[#2a2a2a] text-center text-[#a0a0a0]">
-                No comments yet. Be the first to add one!
+            {issue.resolved_at && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#a0a0a0" }}>Resolved:</span>
+                <span style={{ color: "#22c55e" }}>{new Date(Number(issue.resolved_at)).toLocaleString()}</span>
               </div>
-            ) : (
-              comments.map((comment) => (
-                <CommentCard key={comment.id} comment={comment} />
-              ))
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div style={{ ...cardStyle, marginBottom: "24px" }}>
+        <h3 style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase", marginBottom: "8px" }}>Description</h3>
+        <p style={{ lineHeight: 1.6 }}>{issue.description || "No description available."}</p>
+      </div>
+
+      {/* Status Management */}
+      <div style={{ ...cardStyle, marginBottom: "24px" }}>
+        <h3 style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase", marginBottom: "16px" }}>Change Status</h3>
+        <form action={updateStatus} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <input type="hidden" name="issueId" value={issue.id} />
+          <select
+            name="status"
+            defaultValue={issue.status}
+            style={{
+              padding: "10px 12px",
+              background: "#1a1a1a",
+              border: "1px solid #2a2a2a",
+              borderRadius: "6px",
+              color: "#fafafa",
+              fontSize: "14px",
+            }}
+          >
+            <option value="open">Open</option>
+            <option value="investigating">Investigating</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+          <button type="submit" style={{ ...buttonStyle, background: "#3b82f6", color: "#fff" }}>
+            Update Status
+          </button>
+        </form>
+      </div>
+
+      {/* Feedback to Agent */}
+      <div style={{ ...cardStyle, marginBottom: "24px", borderColor: "#ec4899" }}>
+        <h3 style={{ fontSize: "14px", color: "#ec4899", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+          👤 Provide Feedback to Agent
+        </h3>
+        <p style={{ fontSize: "13px", color: "#a0a0a0", marginBottom: "16px" }}>
+          Add context or instructions for the AI agent. The agent will see this feedback and can incorporate it into future analysis.
+        </p>
+        <form action={addComment} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <input type="hidden" name="issueId" value={issue.id} />
+          <input type="hidden" name="commentType" value="feedback" />
+          <input type="hidden" name="authorName" value="Control Panel User" />
+          <textarea
+            name="content"
+            rows={3}
+            placeholder="e.g., 'The high memory usage is expected during batch processing. Focus on disk space instead.' or 'This is a known issue, please ignore similar alerts.'"
+            required
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+          <div>
+            <button type="submit" style={{ ...buttonStyle, background: "#ec4899", color: "#fff" }}>
+              Send Feedback to Agent
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Add Note */}
+      <div style={{ ...cardStyle, marginBottom: "24px" }}>
+        <h3 style={{ fontSize: "12px", color: "#a0a0a0", textTransform: "uppercase", marginBottom: "16px" }}>Add Note</h3>
+        <form action={addComment} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <input type="hidden" name="issueId" value={issue.id} />
+          <input type="hidden" name="commentType" value="note" />
+          <div>
+            <label style={{ display: "block", fontSize: "13px", color: "#a0a0a0", marginBottom: "4px" }}>Your Name (optional)</label>
+            <input
+              type="text"
+              name="authorName"
+              placeholder="Control Panel User"
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: "13px", color: "#a0a0a0", marginBottom: "4px" }}>Note</label>
+            <textarea
+              name="content"
+              rows={3}
+              placeholder="Add a note about this issue..."
+              required
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
+          </div>
+          <div>
+            <button type="submit" style={{ ...buttonStyle, background: "#22c55e", color: "#fff" }}>
+              Add Note
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Activity History */}
+      <div>
+        <h3 style={{ fontSize: "18px", fontWeight: 500, marginBottom: "16px" }}>
+          Activity History ({comments.length} {comments.length === 1 ? "entry" : "entries"})
+        </h3>
+        <div>
+          {comments.length === 0 ? (
+            <div style={{ ...cardStyle, textAlign: "center", padding: "32px", color: "#a0a0a0" }}>
+              No activity yet. Add a note or feedback to get started.
+            </div>
+          ) : (
+            comments.map((comment) => (
+              <CommentCard key={comment.id} comment={comment} />
+            ))
+          )}
         </div>
       </div>
     </div>

@@ -141,7 +141,7 @@ export interface IssueComment {
   issue_id: string;
   author_type: "agent" | "human";
   author_name: string | null;
-  comment_type: "analysis" | "action" | "status_change" | "alert_fired" | "note";
+  comment_type: "analysis" | "action" | "status_change" | "alert_fired" | "note" | "feedback";
   content: string;
   metadata: string | null;
   created_at: string;
