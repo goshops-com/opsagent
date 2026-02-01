@@ -1,0 +1,45 @@
+# Test Configuration - Lower thresholds for easy alert triggering
+
+collector:
+  interval: 3000  # Faster polling for testing
+
+rules:
+  cpu:
+    warning: 30      # Low threshold for testing
+    critical: 50
+    sustained:
+      threshold: 40
+      duration: 10000  # 10 seconds for testing
+
+  memory:
+    warning: 30      # Low threshold for testing
+    critical: 50
+
+  disk:
+    warning: 50
+    critical: 70
+
+  network:
+    errorRateWarning: 0.001
+
+  processes:
+    zombieWarning: 1  # Alert on any zombie
+
+alerts:
+  cooldown: 30000   # 30 seconds for testing
+  maxHistory: 100
+
+agent:
+  enabled: true
+  autoRemediate: false
+  model: "kimi-k2.5"
+
+dashboard:
+  enabled: true
+  port: 3001
+
+discord:
+  enabled: true
+  webhookUrl: ""
+  notifyOnCritical: true
+  notifyOnAgentAction: true

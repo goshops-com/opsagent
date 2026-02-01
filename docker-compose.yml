@@ -1,0 +1,37 @@
+services:
+  monitor:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - TURSO_DATABASE_URL=${TURSO_DATABASE_URL}
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN}
+      - SERVER_NAME=${SERVER_NAME:-docker-monitor}
+    volumes:
+      - ./config/test.yaml:/app/config/default.yaml:ro
+    # Required for system metrics access
+    pid: host
+    privileged: true
+    networks:
+      - monitor-net
+
+  # Stress testing container - run manually to trigger alerts
+  stress:
+    image: polinux/stress-ng
+    profiles:
+      - test
+    # Default: idle. Use docker compose run to execute stress tests
+    command: ["--help"]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "2"
+    networks:
+      - monitor-net
+
+networks:
+  monitor-net:
+    driver: bridge

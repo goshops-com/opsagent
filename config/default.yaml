@@ -1,0 +1,52 @@
+# System Monitor Configuration
+
+# Metrics collection settings
+collector:
+  interval: 5000  # Polling interval in milliseconds
+
+# Metric thresholds for alerting
+rules:
+  cpu:
+    warning: 70
+    critical: 90
+    sustained:
+      threshold: 80
+      duration: 300000  # 5 minutes in ms
+
+  memory:
+    warning: 75
+    critical: 90
+
+  disk:
+    warning: 80
+    critical: 95
+    growthRateWarning: 1073741824  # 1GB per hour in bytes
+
+  network:
+    errorRateWarning: 0.01  # 1% error rate
+
+  processes:
+    zombieWarning: 5  # Alert if more than 5 zombie processes
+
+# Alert management
+alerts:
+  cooldown: 300000  # 5 minutes between same alerts
+  maxHistory: 1000  # Maximum alerts to keep in history
+
+# AI Agent settings
+agent:
+  enabled: true
+  autoRemediate: false  # If true, execute actions automatically
+  model: "kimi-k2.5"
+
+# Dashboard settings
+dashboard:
+  enabled: true
+  port: 3001
+
+# Discord notifications
+discord:
+  enabled: true
+  webhookUrl: ""  # Set via DISCORD_WEBHOOK_URL env var
+  notifyOnCritical: true
+  notifyOnAgentAction: true
