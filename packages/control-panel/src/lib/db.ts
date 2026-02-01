@@ -10,35 +10,37 @@ export interface Server {
   hostname: string;
   name: string | null;
   ip_address: string | null;
-  os_info: string | null;
+  os: string | null;
+  os_version: string | null;
   status: string;
-  last_seen: string;
-  created_at: string;
+  last_seen_at: number;
+  first_seen_at: number;
 }
 
 export interface Alert {
-  id: number;
+  id: string;
   server_id: string;
-  rule_name: string;
   severity: string;
   message: string;
-  metric_value: number | null;
-  threshold_value: number | null;
-  status: string;
-  created_at: string;
-  resolved_at: string | null;
+  metric: string;
+  current_value: number;
+  threshold: number;
+  created_at: number;
+  resolved_at: number | null;
+  acknowledged: number;
   hostname?: string;
 }
 
 export interface AgentResponse {
-  id: number;
+  id: string;
   server_id: string;
-  alert_id: number | null;
+  alert_id: string | null;
+  model: string;
   analysis: string;
-  recommendation: string | null;
   can_auto_remediate: number;
   requires_human_attention: number;
-  created_at: string;
+  human_notification_reason: string | null;
+  created_at: number;
   hostname?: string;
 }
 
@@ -56,7 +58,7 @@ export interface AgentAction {
 }
 
 export async function getServers(): Promise<Server[]> {
-  const result = await db.execute("SELECT * FROM servers ORDER BY last_seen DESC");
+  const result = await db.execute("SELECT * FROM servers ORDER BY last_seen_at DESC");
   return result.rows as unknown as Server[];
 }
 
@@ -99,7 +101,7 @@ export async function getAgentActions(limit = 50): Promise<AgentAction[]> {
 export async function getStats() {
   const [servers, alerts, pendingActions, openIssues] = await Promise.all([
     db.execute("SELECT COUNT(*) as count FROM servers WHERE status = 'active'"),
-    db.execute("SELECT COUNT(*) as count FROM alerts WHERE status = 'active'"),
+    db.execute("SELECT COUNT(*) as count FROM alerts WHERE resolved_at IS NULL"),
     db.execute("SELECT COUNT(*) as count FROM agent_actions WHERE status = 'pending'"),
     db.execute("SELECT COUNT(*) as count FROM issues WHERE status IN ('open', 'investigating')"),
   ]);

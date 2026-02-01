@@ -5,8 +5,9 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString();
+function formatDate(timestamp: number | string) {
+  const ts = typeof timestamp === 'number' ? timestamp : parseInt(timestamp);
+  return new Date(ts).toLocaleString();
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -117,7 +118,7 @@ export default async function Dashboard() {
                     <StatusBadge status={server.status} />
                   </div>
                   <div style={{ fontSize: "12px", color: "#a0a0a0", marginTop: "4px" }}>
-                    {server.hostname} | Last seen: {formatDate(server.last_seen)}
+                    {server.hostname} | Last seen: {formatDate(server.last_seen_at)}
                   </div>
                 </div>
               ))
@@ -137,7 +138,7 @@ export default async function Dashboard() {
               alerts.map((alert) => (
                 <div key={alert.id} style={{ padding: "12px", background: "#1a1a1a", borderRadius: "6px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontWeight: 500 }}>{alert.rule_name}</span>
+                    <span style={{ fontWeight: 500 }}>{alert.metric}</span>
                     <StatusBadge status={alert.severity} />
                   </div>
                   <div style={{ fontSize: "13px", marginTop: "4px" }}>{alert.message}</div>
@@ -162,13 +163,8 @@ export default async function Dashboard() {
               responses.map((response) => (
                 <div key={response.id} style={{ padding: "12px", background: "#1a1a1a", borderRadius: "6px" }}>
                   <div style={{ fontSize: "13px", marginBottom: "8px" }}>{response.analysis}</div>
-                  {response.recommendation && (
-                    <div style={{ fontSize: "12px", color: "#3b82f6", marginBottom: "4px" }}>
-                      Recommendation: {response.recommendation}
-                    </div>
-                  )}
                   <div style={{ fontSize: "12px", color: "#a0a0a0" }}>
-                    {response.hostname} | {formatDate(response.created_at)}
+                    {response.hostname} | {response.model} | {formatDate(response.created_at)}
                   </div>
                 </div>
               ))
