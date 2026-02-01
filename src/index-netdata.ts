@@ -5,7 +5,7 @@ import { AlertManager } from "./alerts/manager.js";
 import { AIAgentInterface } from "./agent/interface.js";
 import { DashboardServer } from "./dashboard/server.js";
 import { DiscordNotifier } from "./notifications/discord.js";
-import { Database } from "./db/client.js";
+import { createBackend, type Backend } from "./api/backend.js";
 import { IssueManager } from "./db/issue-manager.js";
 import { getPermissions, canExecuteAction, shouldAutoExecute } from "./agent/permissions.js";
 
@@ -18,23 +18,28 @@ async function main() {
   console.log(`NetData URL: ${config.netdata.url}`);
   console.log(`Poll interval: ${config.netdata.pollInterval}s`);
 
-  // Initialize database
-  let db: Database | null = null;
+  // Initialize backend (Control Panel API or Direct Database)
+  let backend: Backend | null = null;
   let issueManager: IssueManager | null = null;
-  
-  if (process.env.TURSO_DATABASE_URL) {
-    try {
-      db = new Database();
-      await db.initialize();
-      issueManager = new IssueManager(db, db.getServerId());
-      console.log(`Server registered: ${db.getServerInfo().hostname} (${db.getServerId()})`);
-    } catch (error) {
-      console.error("[Database] Failed to initialize:", error);
-      console.log("[Database] Continuing without database persistence");
-      db = null;
+
+  try {
+    backend = await createBackend();
+    if (backend) {
+      const info = backend.getServerInfo();
+      console.log(`Agent registered: ${info.hostname} (${backend.getServerId()})`);
+
+      // Issue manager only works with direct database for now
+      if (process.env.TURSO_DATABASE_URL && !process.env.CONTROL_PANEL_URL) {
+        const { Database } = await import("./db/client.js");
+        const db = new Database();
+        await db.initialize();
+        issueManager = new IssueManager(db, db.getServerId());
+      }
     }
-  } else {
-    console.log("[Database] No TURSO_DATABASE_URL configured, running without persistence");
+  } catch (error) {
+    console.error("[Backend] Failed to initialize:", error);
+    console.log("[Backend] Continuing in standalone mode");
+    backend = null;
   }
 
   // Initialize permissions
@@ -81,8 +86,8 @@ async function main() {
       getAgentResults: () => agent.getResults(),
       acknowledgeAlert: (id) => {
         const success = alertManager.acknowledgeAlert(id);
-        if (success && db) {
-          db.acknowledgeAlert(id).catch((e) => console.error("[Database] Failed to acknowledge alert:", e));
+        if (success && backend) {
+          backend.acknowledgeAlert(id).catch((e) => console.error("[Backend] Failed to acknowledge alert:", e));
         }
         return success;
       },
@@ -359,15 +364,15 @@ async function main() {
   // Start collecting NetData alerts
   netdataCollector.start();
 
-  // Heartbeat for database
+  // Heartbeat for backend
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  if (db) {
+  if (backend) {
     heartbeatInterval = setInterval(() => {
-      db!.heartbeat().catch((e) => console.error("[Database] Heartbeat failed:", e));
+      backend!.heartbeat().catch((e) => console.error("[Backend] Heartbeat failed:", e));
     }, 60000);
   }
 
-  const serverInfo = db ? ` [${db.getServerInfo().hostname}]` : "";
+  const serverInfo = backend ? ` [${backend.getServerInfo().hostname}]` : "";
   console.log(`\nOpsAgent${serverInfo} running with NetData integration.`);
   console.log(`Permission level: ${permissions.level}`);
   console.log(`NetData Dashboard: ${config.netdata.url}`);
@@ -390,9 +395,9 @@ async function main() {
       await dashboard.stop();
     }
 
-    if (db) {
-      await db.close();
-      console.log("[Database] Connection closed");
+    if (backend) {
+      await backend.close();
+      console.log("[Backend] Connection closed");
     }
 
     process.exit(0);
