@@ -1,5 +1,5 @@
-import { getServers, getAlerts, getAgentResponses, getAgentActions, getStats } from "@/lib/db";
-import { Server, Activity, Bell, Bot, Clock, AlertCircle } from "lucide-react";
+import { getServers, getAlerts, getAgentResponses, getAgentActions, getStats, getExtendedStats } from "@/lib/db";
+import { Server, Activity, Bell, Bot, Clock, AlertCircle, MessageSquare, Shield, Plug } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -99,12 +99,13 @@ export default async function Dashboard({
 }) {
   const serverFilter = searchParams.server || "all";
 
-  const [servers, allAlerts, allResponses, allActions, stats] = await Promise.all([
+  const [servers, allAlerts, allResponses, allActions, stats, extendedStats] = await Promise.all([
     getServers(),
     getAlerts(50),
     getAgentResponses(50),
     getAgentActions(50),
     getStats(),
+    getExtendedStats(),
   ]);
 
   // Filter by server if needed
@@ -145,13 +146,15 @@ export default async function Dashboard({
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
-        <div style={statCardStyle}>
-          <Server size={32} color="#3b82f6" />
-          <div>
-            <div style={{ fontSize: "24px", fontWeight: 600 }}>{stats.activeServers}</div>
-            <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Active Servers</div>
+        <Link href="/agents" style={{ textDecoration: "none" }}>
+          <div style={{ ...statCardStyle, cursor: "pointer", transition: "all 0.2s" }}>
+            <Server size={32} color="#3b82f6" />
+            <div>
+              <div style={{ fontSize: "24px", fontWeight: 600 }}>{stats.activeServers}</div>
+              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Active Agents →</div>
+            </div>
           </div>
-        </div>
+        </Link>
         <div style={statCardStyle}>
           <Bell size={32} color="#f59e0b" />
           <div>
@@ -159,6 +162,44 @@ export default async function Dashboard({
             <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Active Alerts</div>
           </div>
         </div>
+        <Link href="/sessions" style={{ textDecoration: "none" }}>
+          <div style={{ ...statCardStyle, cursor: "pointer", transition: "all 0.2s" }}>
+            <MessageSquare size={32} color="#8b5cf6" />
+            <div>
+              <div style={{ fontSize: "24px", fontWeight: 600 }}>{extendedStats.activeSessions || 0}</div>
+              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Chat Sessions →</div>
+            </div>
+          </div>
+        </Link>
+        <Link href="/issues" style={{ textDecoration: "none" }}>
+          <div style={{ ...statCardStyle, cursor: "pointer", transition: "all 0.2s" }}>
+            <AlertCircle size={32} color="#ef4444" />
+            <div>
+              <div style={{ fontSize: "24px", fontWeight: 600 }}>{stats.openIssues || 0}</div>
+              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Open Issues →</div>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* Secondary Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+        <div style={statCardStyle}>
+          <Plug size={32} color="#22c55e" />
+          <div>
+            <div style={{ fontSize: "24px", fontWeight: 600 }}>{extendedStats.healthyPlugins || 0}/{extendedStats.totalPlugins || 0}</div>
+            <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Healthy Plugins</div>
+          </div>
+        </div>
+        <Link href="/approvals" style={{ textDecoration: "none" }}>
+          <div style={{ ...statCardStyle, cursor: "pointer", transition: "all 0.2s" }}>
+            <Shield size={32} color="#f59e0b" />
+            <div>
+              <div style={{ fontSize: "24px", fontWeight: 600 }}>{extendedStats.pendingApprovals || 0}</div>
+              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Pending Approvals →</div>
+            </div>
+          </div>
+        </Link>
         <div style={statCardStyle}>
           <Activity size={32} color="#22c55e" />
           <div>
@@ -166,12 +207,12 @@ export default async function Dashboard({
             <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Pending Actions</div>
           </div>
         </div>
-        <Link href="/issues" style={{ textDecoration: "none" }}>
+        <Link href="/audit" style={{ textDecoration: "none" }}>
           <div style={{ ...statCardStyle, cursor: "pointer", transition: "all 0.2s" }}>
-            <AlertCircle size={32} color="#ef4444" />
+            <Clock size={32} color="#6b7280" />
             <div>
-              <div style={{ fontSize: "24px", fontWeight: 600 }}>{stats.openIssues || 0}</div>
-              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Open Issues →</div>
+              <div style={{ fontSize: "24px", fontWeight: 600 }}>→</div>
+              <div style={{ color: "#a0a0a0", fontSize: "14px" }}>Audit Log →</div>
             </div>
           </div>
         </Link>
