@@ -103,7 +103,7 @@ export class NetDataAlertCollector extends EventEmitter {
       // Parse CPU
       let cpuUsage = 0;
       if (cpuRes?.ok) {
-        const cpuData = await cpuRes.json();
+        const cpuData = await cpuRes.json() as { data?: number[][] };
         if (cpuData.data?.[0]) {
           // Sum all CPU usage values (user, system, nice, etc)
           cpuUsage = cpuData.data[0].slice(1).reduce((a: number, b: number) => a + Math.abs(b || 0), 0);
@@ -113,7 +113,7 @@ export class NetDataAlertCollector extends EventEmitter {
       // Parse Load
       let loadAverage = [0, 0, 0];
       if (loadRes?.ok) {
-        const loadData = await loadRes.json();
+        const loadData = await loadRes.json() as { data?: number[][] };
         if (loadData.data?.[0]) {
           loadAverage = [
             loadData.data[0][1] || 0,
@@ -126,7 +126,7 @@ export class NetDataAlertCollector extends EventEmitter {
       // Parse RAM
       let memory = { total: 0, used: 0, free: 0, usedPercent: 0, swapUsed: 0, swapPercent: 0 };
       if (ramRes?.ok) {
-        const ramData = await ramRes.json();
+        const ramData = await ramRes.json() as { data?: number[][]; labels?: string[] };
         if (ramData.data?.[0]) {
           const labels = ramData.labels || [];
           const values = ramData.data[0];
@@ -157,14 +157,14 @@ export class NetDataAlertCollector extends EventEmitter {
       try {
         const diskInfoRes = await fetch(`${baseUrl}/api/v1/info`);
         if (diskInfoRes.ok) {
-          const info = await diskInfoRes.json();
+          const info = await diskInfoRes.json() as { charts?: Record<string, unknown> };
           // Get disk space from charts
           const diskCharts = Object.keys(info.charts || {}).filter(c => c.startsWith("disk_space."));
           for (const chartName of diskCharts.slice(0, 4)) {
             const mount = chartName.replace("disk_space.", "/").replace(/_/g, "/");
             const chartRes = await fetch(`${baseUrl}/api/v1/data?chart=${chartName}&points=1&format=json`);
             if (chartRes.ok) {
-              const chartData = await chartRes.json();
+              const chartData = await chartRes.json() as { data?: number[][] };
               if (chartData.data?.[0]) {
                 const avail = Math.abs(chartData.data[0][1] || 0);
                 const used = Math.abs(chartData.data[0][2] || 0);
@@ -188,7 +188,7 @@ export class NetDataAlertCollector extends EventEmitter {
       // Parse Network
       let network = { totalRxBytes: 0, totalTxBytes: 0, errorRate: 0 };
       if (netRes?.ok) {
-        const netData = await netRes.json();
+        const netData = await netRes.json() as { data?: number[][] };
         if (netData.data?.[0]) {
           network = {
             totalRxBytes: Math.abs(netData.data[0][1] || 0) * 1024,
